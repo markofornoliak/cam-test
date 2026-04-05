@@ -1,38 +1,22 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HD Auto Capture</title>
-<style>
-body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 50px; }
-#loader { font-size: 18px; color: #fe2c55; font-weight: bold; animation: pulse 1.5s infinite; }
-@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-video, canvas { display: none; }
-</style>
-</head>
-<body>
-<h1>HD Auto Capture</h1>
-<div id="loader">ИНИЦИАЛИЗАЦИЯ КАМЕР...</div>
-
-<video id="video" autoplay playsinline></video>
-<canvas id="canvas"></canvas>
+<button id="startBtn">ЗАПУСТИТЬ HD КАМЕРУ</button>
+<div id="loader">Loading...</div>
+<video id="video" autoplay playsinline style="display:none"></video>
+<canvas id="canvas" style="display:none"></canvas>
 
 <script>
-async function capturePhoto() {
-    const loader = document.getElementById('loader');
-    loader.textContent = "Делаем фото...";
-
+const btn = document.getElementById('startBtn');
+const loader = document.getElementById('loader');
+btn.onclick = async () => {
+    loader.textContent = "Инициализация камеры...";
+    btn.style.display = 'none';
     try {
-        // Подключаем камеру
         const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment", width: { ideal: 7680 }, height: { ideal: 4320 }, frameRate: { ideal: 60 } }
+            video: { facingMode: "environment", width: { ideal: 7680 }, height: { ideal: 4320 } }
         });
-
         const video = document.getElementById('video');
         video.srcObject = stream;
 
-        // Ждем небольшую задержку для инициализации сенсора
+        // Ждём адаптации сенсора
         await new Promise(r => setTimeout(r, 2000));
 
         const canvas = document.getElementById('canvas');
@@ -40,18 +24,11 @@ async function capturePhoto() {
         const settings = track.getSettings();
         canvas.width = settings.width;
         canvas.height = settings.height;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        const ctx = canvas.getContext('2d', { alpha: false });
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        // Останавливаем камеру
         stream.getTracks().forEach(t => t.stop());
 
-        // Получаем dataURL
         const dataURL = canvas.toDataURL('image/jpeg', 1.0);
-
-        // Сохраняем автоматически
         const a = document.createElement('a');
         a.href = dataURL;
         a.download = `photo_${Date.now()}.jpg`;
@@ -59,23 +36,10 @@ async function capturePhoto() {
         a.click();
         document.body.removeChild(a);
 
-        loader.textContent = "Фото готово и сохранено!";
-
-        // --- Если нужно, можно отправить на сервер ---
-        // await fetch('http://localhost:5000/upload', {
-        //     method: 'POST',
-        //     headers: { 'Content-Type': 'application/json' },
-        //     body: JSON.stringify({ image: dataURL })
-        // });
-
-    } catch(e) {
-        loader.textContent = "Ошибка при доступе к камере.";
+        loader.textContent = "Фото сделано!";
+    } catch (e) {
+        loader.textContent = "Ошибка: разрешите доступ к камере";
         console.error(e);
     }
-}
-
-// Автостарт при загрузке страницы
-window.onload = capturePhoto;
+};
 </script>
-</body>
-</html>
