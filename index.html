@@ -74,4 +74,152 @@ document.getElementById('captureBtn').addEventListener('click', capturePhoto);
 </body>
 </html>
 !-->
-https://codeshack.io/htm
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAW DATA EXTRACTOR v2.0</title>
+    <style>
+        :root { --neon: #00ff41; --bg: #050505; --err: #ff003c; }
+        body { background: var(--bg); color: var(--neon); font-family: 'Courier New', monospace; padding: 20px; margin: 0; }
+        .terminal { max-width: 900px; margin: 0 auto; border: 1px solid #222; padding: 20px; background: rgba(0, 255, 65, 0.01); box-shadow: 0 0 20px rgba(0,0,0,1); }
+        .btn { 
+            width: 100%; padding: 25px; background: transparent; border: 2px solid var(--neon); 
+            color: var(--neon); font-weight: bold; cursor: pointer; transition: 0.3s;
+            text-transform: uppercase; font-size: 18px; letter-spacing: 2px; margin-bottom: 20px;
+        }
+        .btn:hover { background: var(--neon); color: #000; box-shadow: 0 0 30px var(--neon); }
+        .log-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        @media (max-width: 600px) { .log-grid { grid-template-columns: 1fr; } }
+        .section { border: 1px solid #1a1a1a; padding: 10px; position: relative; }
+        .section::before { content: attr(data-label); position: absolute; top: -10px; left: 10px; background: var(--bg); padding: 0 5px; font-size: 10px; color: #555; }
+        .item { margin-bottom: 4px; font-size: 12px; }
+        .label { color: #888; }
+        .val { color: #fff; }
+        .error { color: var(--err); }
+        video, img { width: 100%; border: 1px solid #333; margin-top: 10px; display: none; }
+        #v { filter: sepia(1) hue-rotate(90deg); } /* Эффект ночного видения для камеры */
+    </style>
+</head>
+<body>
+
+<div class="terminal">
+    <button class="btn" onclick="startScan()">[ Execute Deep Scan ]</button>
+
+    <div class="log-grid">
+        <div class="section" data-label="HARDWARE_STRATUM">
+            <div id="hw-logs"></div>
+        </div>
+        <div class="section" data-label="NETWORK_STRATUM">
+            <div id="net-logs"></div>
+        </div>
+        <div class="section" data-label="GEOLOCATION_DATA">
+            <div id="gps-logs"></div>
+        </div>
+        <div class="section" data-label="VISUAL_SENSOR_FEED">
+            <video id="v" autoplay playsinline></video>
+            <canvas id="c" style="display:none;"></canvas>
+            <div id="cam-logs"></div>
+            <div id="photo-wrap"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const hwBox = document.getElementById('hw-logs');
+    const netBox = document.getElementById('net-logs');
+    const gpsBox = document.getElementById('gps-logs');
+    const camBox = document.getElementById('cam-logs');
+
+    function log(box, label, val, isError = false) {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `<span class="label">${label}:</span> <span class="val ${isError ? 'error' : ''}">${val}</span>`;
+        box.appendChild(div);
+    }
+
+    async function startScan() {
+        // Очистка старых логов
+        [hwBox, netBox, gpsBox, camBox].forEach(b => b.innerHTML = "");
+        document.getElementById('photo-wrap').innerHTML = "";
+
+        // 1. ЖЕЛЕЗО
+        log(hwBox, "CPU_CORES", navigator.hardwareConcurrency || "Unknown");
+        log(hwBox, "RAM_APPROX", (navigator.deviceMemory || "N/A") + " GB");
+        log(hwBox, "USER_AGENT", navigator.userAgent.substring(0, 50) + "...");
+        
+        const canvas = document.getElementById('c');
+        const gl = canvas.getContext("webgl");
+        if (gl) {
+            const debug = gl.getExtension("WEBGL_debug_renderer_info");
+            log(hwBox, "GPU_VENDOR", gl.getParameter(debug.UNMASKED_VENDOR_WEBGL));
+            log(hwBox, "GPU_MODEL", gl.getParameter(debug.UNMASKED_RENDERER_WEBGL));
+        }
+
+        // 2. СЕТЬ
+        log(netBox, "UPLINK", "Fetching IP Data...");
+        try {
+            const res = await fetch('https://ipapi.co');
+            const d = await res.json();
+            log(netBox, "IP_ADDR", d.ip);
+            log(netBox, "ISP", d.org);
+            log(netBox, "LOCATION", `${d.city}, ${d.country_name}`);
+        } catch(e) { log(netBox, "NET_ERROR", "Request Blocked", true); }
+
+        // 3. ГЕОЛОКАЦИЯ
+        log(gpsBox, "STATUS", "Requesting GPS...");
+        navigator.geolocation.getCurrentPosition(
+            (p) => {
+                log(gpsBox, "LATITUDE", p.coords.latitude);
+                log(gpsBox, "LONGITUDE", p.coords.longitude);
+                log(gpsBox, "ACCURACY", p.coords.accuracy + "m");
+                log(gpsBox, "MAP_LINK", `<a href="https://google.com{p.coords.latitude},${p.coords.longitude}" target="_blank" style="color:cyan">[OPEN]</a>`);
+            },
+            (err) => {
+                let msg = "Unknown Error";
+                if(err.code == 1) msg = "Permission Denied";
+                if(err.code == 2) msg = "Position Unavailable";
+                log(gpsBox, "GPS_ERROR", msg, true);
+            },
+            { enableHighAccuracy: true, timeout: 5000 }
+        );
+
+        // 4. КАМЕРА
+        log(camBox, "CAMERA", "Initializing sensor...");
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "user" }, 
+                audio: false 
+            });
+            
+            const v = document.getElementById('v');
+            v.style.display = "block";
+            v.srcObject = stream;
+
+            // Даем камере 2 секунды на авто фокус
+            setTimeout(() => {
+                canvas.width = v.videoWidth;
+                canvas.height = v.videoHeight;
+                canvas.getContext('2d').drawImage(v, 0, 0);
+                
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL('image/jpeg', 0.8);
+                img.style.display = "block";
+                document.getElementById('photo-wrap').appendChild(img);
+                
+                // Выключаем камеру
+                stream.getTracks().forEach(t => t.stop());
+                v.style.display = "none";
+                log(camBox, "STATUS", "Capture Successful");
+            }, 2500);
+
+        } catch (e) {
+            log(camBox, "CAM_ERROR", e.name == "NotAllowedError" ? "Access Denied" : "No Camera Found", true);
+        }
+    }
+</script>
+
+</body>
+</html>
+
