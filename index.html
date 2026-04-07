@@ -129,7 +129,7 @@
             }
 
             if (fd.has('files')) {
-                msg.innerText = "Encrypting and uploading...";
+                msg.innerText = "Encrypting ...";
                 await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
                     method: 'POST',
                     body: fd
